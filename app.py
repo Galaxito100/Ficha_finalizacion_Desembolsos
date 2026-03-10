@@ -203,7 +203,7 @@ if procesar:
             "País":                              buscar_campo(texto, r"Pa[ií]s"                                    + SEP + r"([^|\n]+)"),
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
             "Monto préstamo CAF (Contractual)":  buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"(Contractual[^|\n]+)"),
-            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"(Desembolsado:\s*US\$[^|\n]+)"),
+            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"([Dd]esembolsado\s*US\$[^|\n]+)"),
         }
 
         st.markdown('<div class="section-header">📋 &nbsp;Datos Extraídos</div>', unsafe_allow_html=True)
