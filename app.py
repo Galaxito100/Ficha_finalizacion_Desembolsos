@@ -6,7 +6,7 @@ from pathlib import Path
 
 # ── Configuración de página ────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Ficha de finalizacion de Desembolsos",
+    page_title="CAF – Extractor FR",
     layout="wide",
     page_icon="🏦"
 )
@@ -122,7 +122,7 @@ st.markdown("""
 <div class="caf-header">
     <div>
         <div class="caf-header-sub">Gerencia Corporativa de Riesgos · Dirección de Riesgo Soberano</div>
-        <div class="caf-header-title">Ficha &nbsp;de&nbsp; finalización de desembolsos</div>
+        <div class="caf-header-title">Ficha de Finalización de Desembolsos</div>
     </div>
     <div style="color:white; font-family:Montserrat; font-size:32px; font-weight:900; letter-spacing:-1px;">CAF</div>
 </div>
@@ -203,7 +203,7 @@ if procesar:
             "País":                              buscar_campo(texto, r"Pa[ií]s"                                    + SEP + r"([^|\n]+)"),
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
             "Monto préstamo CAF (Contractual)":  buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"(Contractual[^|\n]+)"),
-            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"([Dd]esembolsado:\s*US\$[^|\n]+)"),
+            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+\s*MM[^\n]*)"),
         }
 
         st.markdown('<div class="section-header">📋 &nbsp;Datos Extraídos</div>', unsafe_allow_html=True)
