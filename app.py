@@ -122,7 +122,7 @@ st.markdown("""
 <div class="caf-header">
     <div>
         <div class="caf-header-sub">Gerencia Corporativa de Riesgos · Dirección de Riesgo Soberano</div>
-        <div class="caf-header-title">Dispensa &nbsp;|&nbsp; Enmienda</div>
+        <div class="caf-header-title">Ficha &nbsp;de&nbsp; finalización de desembolsos</div>
     </div>
     <div style="color:white; font-family:Montserrat; font-size:32px; font-weight:900; letter-spacing:-1px;">CAF</div>
 </div>
