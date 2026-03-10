@@ -6,7 +6,7 @@ from pathlib import Path
 
 # ── Configuración de página ────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Finalizacion de Desembolsos",
+    page_title="Ficha de finalizacion de Desembolsos",
     layout="wide",
     page_icon="🏦"
 )
