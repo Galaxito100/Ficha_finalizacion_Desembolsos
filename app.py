@@ -176,23 +176,21 @@ def buscar_campo(texto, patron, grupo=1):
 
 def extraer_presentacion_informes(ruta, extension):
     """
-    Tabla 'Presentación de informes': 3 columnas.
-      col[0] = "Presentación de informes" (celda combinada, puede repetirse)
-      col[1] = sub-etiqueta: "Última auditoría" / "Final" / "Pendientes"
-      col[2] = texto largo (el valor que queremos)
-    Usamos dict.fromkeys para limpiar duplicados de celdas combinadas,
-    luego tomamos siempre: etiqueta = celdas[1], valor = celdas[2].
+    Tabla 'Presentación de informes': 3 columnas físicas en Word.
+      col[0] = "Presentación de informes" (combinada verticalmente → se repite al leer)
+      col[1] = sub-etiqueta exacta: "Última auditoría" / "Final" / "Pendientes"
+      col[2] = valor (texto largo)
+    Estrategia: leemos las celdas RAW (con duplicados) y accedemos por índice fijo [1] y [2],
+    que corresponden siempre a etiqueta y valor en tablas de 3 columnas.
     """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
-    # Patrones flexibles: la etiqueta CONTIENE alguna de estas cadenas
-    # Orden de prioridad: se asigna al primer nombre que no esté encontrado
-    patrones = [
-        ("auditor",     "Última auditoría"),
-        ("pendientes",  "Pendientes"),
-        ("final",       "Final"),
-    ]
-    # Para "Final" y "Pendientes" exigimos match exacto en la etiqueta
-    exactos = {"final", "pendientes"}
+    # etiqueta exacta (lower) → nombre del campo
+    mapa_exacto = {
+        "última auditoría": "Última auditoría",
+        "ultima auditoria": "Última auditoría",
+        "final":            "Final",
+        "pendientes":       "Pendientes",
+    }
     try:
         if extension == ".docx":
             from docx import Document
@@ -201,27 +199,32 @@ def extraer_presentacion_informes(ruta, extension):
                 texto_tabla = " ".join(c.text for fila in tabla.rows for c in fila.cells).lower()
                 if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
                     continue
+                # Determinar número de columnas físicas de la tabla
+                n_cols = len(tabla.columns)
                 for fila in tabla.rows:
-                    # Limpiar duplicados preservando orden (celdas combinadas repiten texto)
-                    celdas = list(dict.fromkeys(c.text.strip() for c in fila.cells))
-                    celdas = [c for c in celdas if c]
-                    if len(celdas) < 2:
-                        continue
-                    # La etiqueta es la penúltima celda, el valor es la última
-                    etiqueta = celdas[-2].lower().strip()
-                    valor    = celdas[-1]
-                    for clave, nombre in patrones:
-                        coincide = (etiqueta == clave) if clave in exactos else (clave in etiqueta)
-                        if coincide and resultados[nombre] == "No encontrado":
-                            resultados[nombre] = valor
-                            break
+                    celdas_raw = [c.text.strip() for c in fila.cells]
+                    if n_cols == 3 and len(celdas_raw) >= 3:
+                        # Acceso directo: col[1]=etiqueta, col[2]=valor
+                        etiqueta = celdas_raw[1].lower().strip()
+                        valor    = celdas_raw[2].strip()
+                    else:
+                        # Fallback: desduplicar y usar penúltima/última
+                        celdas = list(dict.fromkeys(celdas_raw))
+                        celdas = [c for c in celdas if c]
+                        if len(celdas) < 2:
+                            continue
+                        etiqueta = celdas[-2].lower().strip()
+                        valor    = celdas[-1].strip()
+                    nombre = mapa_exacto.get(etiqueta)
+                    if nombre and valor and resultados[nombre] == "No encontrado":
+                        resultados[nombre] = valor
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
                 texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
-            for clave, nombre in mapa.items():
-                m = re.search(rf"{clave}[^\n]*\n([^\n]+)", texto, re.IGNORECASE)
-                if m:
+            for clave, nombre in mapa_exacto.items():
+                m = re.search(rf"{re.escape(clave)}[^\n]*\n([^\n]+)", texto, re.IGNORECASE)
+                if m and resultados[nombre] == "No encontrado":
                     resultados[nombre] = m.group(1).strip()
     except Exception as e:
         for k in resultados:
@@ -258,7 +261,7 @@ if procesar:
             "País":                              buscar_campo(texto, r"Pa[ií]s"                                    + SEP + r"([^|\n]+)"),
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
             "Monto préstamo CAF (Aprobado)":     buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"((?:Contractual[^|\n]+|(?:US\$|USD)\s*[\d.,]+[^|\n]*))"),
-            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"(?:Desembolsado[:\s|]+)((?:US\$|USD)\s*[\d.,]+[^\n|]*)"),  # captura hasta fin de línea sin cortar en |
+            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"(?:Desembolsado\s*(?::|[|\s])+\s*)((?:US\$|USD)\s*[\d.,]+[^\n]*)"),
         }
 
         st.markdown('<div class="section-header">📋 &nbsp;Informe de la Operación</div>', unsafe_allow_html=True)
@@ -272,5 +275,4 @@ if procesar:
             ("Pendientes",       informes["Pendientes"]),
         ]), unsafe_allow_html=True)
 
-        st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
         st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
