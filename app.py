@@ -4,14 +4,14 @@ import tempfile
 import streamlit as st
 from pathlib import Path
 
-# Configuración de página ────────────────────────────────────────────────────
+# ── Configuración de página ────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="CAF – Herramienta de apoyo ejecutivo",
+    page_title="CAF – Extractor FR",
     layout="wide",
     page_icon="🏦"
 )
 
-# Estilo de la Página ────────────────────────────────────────────────────
+# ── Estilo CAF ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Open+Sans:wght@400;600&display=swap');
@@ -117,7 +117,7 @@ div.stButton > button:hover {
 </style>
 """, unsafe_allow_html=True)
 
-# Banner de encabezado ─────────────────────────────────────────────────────────────────────
+# ── Header ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="caf-header">
     <div>
@@ -128,7 +128,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Upload + Botón ─────────────────────────────────────────────────────────────
+# ── Upload + Botón ─────────────────────────────────────────────────────────────
 col_up, col_btn = st.columns([3, 1])
 with col_up:
     archivo = st.file_uploader("Sube tu documento (.pdf o .docx)", type=["pdf", "docx"])
@@ -137,8 +137,8 @@ with col_btn:
     st.write("")
     procesar = st.button("⚙️ Procesar")
 
-# Funciones de extracción ────────────────────────────────────────────────────
-def extraer_texto_pdf(ruta): #Configuracion de la admision de PDF
+# ── Funciones de extracción ────────────────────────────────────────────────────
+def extraer_texto_pdf(ruta):
     import pdfplumber
     texto_completo = []
     with pdfplumber.open(ruta) as pdf:
@@ -151,7 +151,7 @@ def extraer_texto_pdf(ruta): #Configuracion de la admision de PDF
                 texto_completo.append(texto_plano)
     return "\n".join(texto_completo)
 
-def extraer_texto_docx(ruta): #Configuracion de la admision de word
+def extraer_texto_docx(ruta):
     from docx import Document
     doc = Document(ruta)
     lineas = []
@@ -167,20 +167,64 @@ def extraer_texto_docx(ruta): #Configuracion de la admision de word
 
 SEP = r"[\s|]+"
 
-def buscar_campo(texto, patron, grupo=1):                           #Analisis Textual
+def buscar_campo(texto, patron, grupo=1):
     match = re.search(patron, texto, re.IGNORECASE | re.MULTILINE)
     if not match:
         return "No encontrado"
     valor = match.group(grupo).strip().strip("|").strip()
     return valor if valor else "No encontrado"
 
-def tabla_html(filas):                                                 #Analisis Textual dentro de tablas
+def extraer_presentacion_informes(ruta, extension):
+    """
+    Extrae Última auditoría, Final y Pendientes de la tabla
+    'Presentación de informes'. La celda izquierda está combinada
+    verticalmente, por lo que buscamos las sub-etiquetas en la columna del medio.
+    """
+    resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
+    claves = {
+        "ltima auditor": "Última auditoría",
+        "final":         "Final",
+        "pendiente":     "Pendientes",
+    }
+    try:
+        if extension == ".docx":
+            from docx import Document
+            doc = Document(ruta)
+            for tabla in doc.tables:
+                texto_tabla = " ".join(c.text for fila in tabla.rows for c in fila.cells).lower()
+                if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
+                    continue
+                for fila in tabla.rows:
+                    celdas = [c.text.strip() for c in fila.cells]
+                    for i, celda in enumerate(celdas):
+                        celda_lower = celda.lower()
+                        for clave, nombre in claves.items():
+                            if clave in celda_lower and resultados[nombre] == "No encontrado":
+                                # Valor en la celda siguiente no vacía
+                                for j in range(i + 1, len(celdas)):
+                                    if celdas[j].strip():
+                                        resultados[nombre] = celdas[j].strip()
+                                        break
+        else:
+            import pdfplumber
+            with pdfplumber.open(ruta) as pdf:
+                texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
+            for clave, nombre in claves.items():
+                m = re.search(rf"{clave}[^\n]*\n([^\n]+)", texto, re.IGNORECASE)
+                if m:
+                    resultados[nombre] = m.group(1).strip()
+    except Exception as e:
+        for k in resultados:
+            resultados[k] = f"Error: {e}"
+    return resultados
+
+def tabla_html(filas):
     rows = ""
     for label, valor in filas:
         rows += f"<tr><td>{label}</td><td>{valor or '—'}</td></tr>"
     return f'<table class="caf-table">{rows}</table>'
 
-# Procesamiento ──────────────────────────────────────────────────────────────
+# ── Procesamiento ──────────────────────────────────────────────────────────────
 if procesar:
     if archivo is None:
         st.warning("⚠️ Por favor sube un archivo antes de procesar.")
@@ -192,21 +236,30 @@ if procesar:
             ruta_tmp = tmp.name
 
         with st.spinner("Procesando documento..."):
-            texto = extraer_texto_pdf(ruta_tmp) if extension == ".pdf" else extraer_texto_docx(ruta_tmp)
+            texto    = extraer_texto_pdf(ruta_tmp) if extension == ".pdf" else extraer_texto_docx(ruta_tmp)
+            informes = extraer_presentacion_informes(ruta_tmp, extension)
 
         os.unlink(ruta_tmp)
 
-        # Exactamente los 6 campos del notebook original
+        # ── Sección 1: Informe de la Operación ────────────────────────────────
         resultados = {
             "Nombre de la Operación":           buscar_campo(texto, r"Nombre de la operaci[oó]n"                  + SEP + r"([^|\n]+)"),
             "Prestatario":                       buscar_campo(texto, r"Prestatario"                                + SEP + r"([^|\n]+)"),
             "País":                              buscar_campo(texto, r"Pa[ií]s"                                    + SEP + r"([^|\n]+)"),
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
-            "Monto préstamo CAF (Aprobado)":  buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"(Contractual[^|\n]+)"),
+            "Monto préstamo CAF (Aprobado)":     buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"(Contractual[^|\n]+)"),
             "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+\s*MM[^\n]*)"),
         }
 
         st.markdown('<div class="section-header">📋 &nbsp;Informe de la Operación</div>', unsafe_allow_html=True)
         st.markdown(tabla_html(list(resultados.items())), unsafe_allow_html=True)
+
+        # ── Sección 2: Presentación de Informes ───────────────────────────────
+        st.markdown('<div class="section-header">📄 &nbsp;Presentación de Informes</div>', unsafe_allow_html=True)
+        st.markdown(tabla_html([
+            ("Última auditoría", informes["Última auditoría"]),
+            ("Final",            informes["Final"]),
+            ("Pendientes",       informes["Pendientes"]),
+        ]), unsafe_allow_html=True)
 
         st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
