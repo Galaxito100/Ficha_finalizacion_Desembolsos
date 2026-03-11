@@ -296,8 +296,8 @@ if procesar:
             "Monto préstamo CAF (Desembolsado)": (
                 # Caso 1: "Desembolsado:" explícito
                 buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+[^\n]*)") or
-                # Caso 2: segunda fila con la misma etiqueta (línea siguiente en texto extraído)
-                buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF[\s|]+((?:US\$|USD)[\d.,\s]+MM[^\n]*)\nMonto del pr[eé]stamo[\s\S]*?aprobado CAF[\s|]+((?:US\$|USD)[^\n]+)", grupo=2)
+                # Caso 2: segunda fila con la misma etiqueta — busca dos líneas consecutivas con esa etiqueta
+                buscar_campo(texto, r"Monto del pr[eé]stamo[^\n]*aprobado CAF[^\n]*\n[^\n]*Monto del pr[eé]stamo[^\n]*aprobado CAF[\s|]+((?:US\$|USD)[^\n]+)", grupo=1)
             ),
         }
 
