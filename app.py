@@ -175,11 +175,7 @@ def buscar_campo(texto, patron, grupo=1):
     return valor if valor else "No encontrado"
 
 def extraer_presentacion_informes(ruta, extension):
-    """
-    Extrae Última auditoría, Final y Pendientes de la tabla
-    'Presentación de informes'. La celda izquierda está combinada
-    verticalmente, por lo que buscamos las sub-etiquetas en la columna del medio.
-    """
+   
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
     claves = {
         "ltima auditor": "Última auditoría",
