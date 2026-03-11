@@ -326,8 +326,10 @@ if procesar:
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
             "Monto préstamo CAF (Aprobado)":     buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"((?:Contractual[^|\n]+|(?:US\$|USD)\s*[\d.,]+[^|\n]*))"),
             "Monto préstamo CAF (Desembolsado)": (
+                # Caso 1: "Desembolsado:" explícito
                 buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+[^\n]*)") or
-                buscar_campo(texto, r"((?:US\$|USD)\s*[\d.,]+\s*MM[^\n|]*(?:\(\d+%[^)]*\)))")
+                # Caso 2: segunda línea USD tras la etiqueta (misma lógica que Aprobado, una fila abajo)
+                buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF[\s\S]*?(?:US\$|USD)\s*[\d.,]+[^\n]*\n((?:US\$|USD)\s*[\d.,]+[^\n]*)")
             ),
         }
 
