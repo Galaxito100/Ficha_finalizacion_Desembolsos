@@ -266,24 +266,36 @@ def extraer_presentacion_informes(ruta, extension):
 def extraer_segunda_linea_prestamo(ruta, extension):
     """
     Busca la celda 'Monto del préstamo aprobado CAF' y devuelve
-    la segunda línea de su valor (que es el monto desembolsado
-    cuando no tiene la etiqueta 'Desembolsado:' explícita).
+    todo el contenido del valor (ambas líneas) cuando no hay
+    etiqueta 'Desembolsado:' explícita.
     """
     try:
         if extension == ".docx":
             from docx import Document
             doc = Document(ruta)
             for tabla in doc.tables:
+                coincidencias = []
                 for fila in tabla.rows:
                     celdas_raw = [c.text.strip() for c in fila.cells]
                     celdas = list(dict.fromkeys(celdas_raw))
-                    etiqueta = celdas[0].lower() if celdas else ""
+                    if len(celdas) < 2:
+                        continue
+                    etiqueta = celdas[0].lower()
                     if "monto del pr" in etiqueta and "aprobado caf" in etiqueta:
-                        # El valor está en la última celda, puede tener varias líneas
-                        valor = celdas[-1] if len(celdas) > 1 else ""
-                        lineas = [l.strip() for l in valor.splitlines() if l.strip()]
-                        if len(lineas) >= 2:
-                            return lineas[1]  # segunda línea = desembolsado
+                        valor = celdas[-1].strip()
+                        coincidencias.append(valor)
+                # La segunda coincidencia es la fila de desembolsado
+                if len(coincidencias) >= 2:
+                    v = coincidencias[1]
+                    if v and v != "-":
+                        return v
+                # Si solo hay una fila pero tiene dos líneas (salto dentro de celda)
+                elif len(coincidencias) == 1:
+                    lineas = [l.strip() for l in coincidencias[0].splitlines() if l.strip()]
+                    if len(lineas) >= 2:
+                        return "\n".join(lineas[1:])
+                    elif lineas:
+                        return lineas[0]
     except Exception:
         pass
     return "No encontrado"
