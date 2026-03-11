@@ -180,18 +180,24 @@ def normalizar(t):
 
 def extraer_presentacion_informes(ruta, extension):
     """
-    Tabla 'Presentación de informes': 3 columnas en Word.
-      col[0] = "Presentación de informes" (celda combinada verticalmente, se repite)
-      col[1] = sub-etiqueta: "Última auditoría" / "Final" / "Pendientes"
-      col[2] = valor (texto largo)
-    Usamos normalizar() para comparar sin tildes ni mayúsculas.
+    Busca por palabras clave en la etiqueta (celda penúltima tras deduplicar).
+    Acepta variantes como:
+      "Última auditoría", "Auditoría Financiera 2024"  → Última auditoría
+      "Final", "Informe Final del Préstamo"             → Final
+      "Pendientes", "Condiciones pendientes"            → Pendientes
     """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
-    mapa = {
-        "ultima auditoria": "Última auditoría",
-        "final":            "Final",
-        "pendientes":       "Pendientes",
-    }
+
+    # Cada entrada: (palabra_clave_normalizada, nombre_resultado)
+    # El orden importa: se evalúa de arriba abajo y se asigna al primero que coincida
+    claves = [
+        ("auditor",   "Última auditoría"),   # "auditoría", "Auditoría Financiera 2024"
+        ("informe final", "Final"),          # "Informe Final del Préstamo" — va ANTES de "final"
+        ("final",     "Final"),              # "Final" solo
+        ("condicion", "Pendientes"),         # "Condiciones pendientes"
+        ("pendiente", "Pendientes"),         # "Pendientes" solo
+    ]
+
     try:
         if extension == ".docx":
             from docx import Document
@@ -201,21 +207,24 @@ def extraer_presentacion_informes(ruta, extension):
                 if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
                     continue
                 for fila in tabla.rows:
-                    # Desduplicar: Word repite texto en celdas combinadas verticalmente
+                    # Desduplicar celdas combinadas verticalmente
                     celdas = list(dict.fromkeys(c.text.strip() for c in fila.cells))
                     celdas = [c for c in celdas if c]
                     if len(celdas) < 2:
                         continue
                     etiqueta_norm = normalizar(celdas[-2])
                     valor         = celdas[-1].strip()
-                    nombre = mapa.get(etiqueta_norm)
-                    if nombre and valor and resultados[nombre] == "No encontrado":
-                        resultados[nombre] = valor
+                    if not valor:
+                        continue
+                    for clave, nombre in claves:
+                        if clave in etiqueta_norm and resultados[nombre] == "No encontrado":
+                            resultados[nombre] = valor
+                            break
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
                 texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
-            for clave, nombre in mapa.items():
+            for clave, nombre in claves:
                 m = re.search(rf"{re.escape(clave)}[^\n]*\n([^\n]+)", texto, re.IGNORECASE)
                 if m and resultados[nombre] == "No encontrado":
                     resultados[nombre] = m.group(1).strip()
