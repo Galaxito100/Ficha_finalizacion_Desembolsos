@@ -4,14 +4,14 @@ import tempfile
 import streamlit as st
 from pathlib import Path
 
-# ── Configuración de página ────────────────────────────────────────────────────
+# Configuración de página ────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="CAF – Extractor FR",
+    page_title="CAF – Herramienta de apoyo ejecutivo",
     layout="wide",
     page_icon="🏦"
 )
 
-# ── Estilo CAF ─────────────────────────────────────────────────────────────────
+# Estilo de la Página ────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Open+Sans:wght@400;600&display=swap');
@@ -117,7 +117,7 @@ div.stButton > button:hover {
 </style>
 """, unsafe_allow_html=True)
 
-# ── Header ─────────────────────────────────────────────────────────────────────
+# Banner de encabezado ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="caf-header">
     <div>
@@ -128,7 +128,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Upload + Botón ─────────────────────────────────────────────────────────────
+# Upload + Botón ─────────────────────────────────────────────────────────────
 col_up, col_btn = st.columns([3, 1])
 with col_up:
     archivo = st.file_uploader("Sube tu documento (.pdf o .docx)", type=["pdf", "docx"])
@@ -137,8 +137,8 @@ with col_btn:
     st.write("")
     procesar = st.button("⚙️ Procesar")
 
-# ── Funciones de extracción ────────────────────────────────────────────────────
-def extraer_texto_pdf(ruta):
+# Funciones de extracción ────────────────────────────────────────────────────
+def extraer_texto_pdf(ruta): #Configuracion de la admision de PDF
     import pdfplumber
     texto_completo = []
     with pdfplumber.open(ruta) as pdf:
@@ -151,7 +151,7 @@ def extraer_texto_pdf(ruta):
                 texto_completo.append(texto_plano)
     return "\n".join(texto_completo)
 
-def extraer_texto_docx(ruta):
+def extraer_texto_docx(ruta): #Configuracion de la admision de word
     from docx import Document
     doc = Document(ruta)
     lineas = []
@@ -167,20 +167,20 @@ def extraer_texto_docx(ruta):
 
 SEP = r"[\s|]+"
 
-def buscar_campo(texto, patron, grupo=1):
+def buscar_campo(texto, patron, grupo=1):                           #Analisis Textual
     match = re.search(patron, texto, re.IGNORECASE | re.MULTILINE)
     if not match:
         return "No encontrado"
     valor = match.group(grupo).strip().strip("|").strip()
     return valor if valor else "No encontrado"
 
-def tabla_html(filas):
+def tabla_html(filas):                                                 #Analisis Textual dentro de tablas
     rows = ""
     for label, valor in filas:
         rows += f"<tr><td>{label}</td><td>{valor or '—'}</td></tr>"
     return f'<table class="caf-table">{rows}</table>'
 
-# ── Procesamiento ──────────────────────────────────────────────────────────────
+# Procesamiento ──────────────────────────────────────────────────────────────
 if procesar:
     if archivo is None:
         st.warning("⚠️ Por favor sube un archivo antes de procesar.")
@@ -202,11 +202,11 @@ if procesar:
             "Prestatario":                       buscar_campo(texto, r"Prestatario"                                + SEP + r"([^|\n]+)"),
             "País":                              buscar_campo(texto, r"Pa[ií]s"                                    + SEP + r"([^|\n]+)"),
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
-            "Monto préstamo CAF (Contractual)":  buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"(Contractual[^|\n]+)"),
+            "Monto préstamo CAF (Aprobado)":  buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"(Contractual[^|\n]+)"),
             "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+\s*MM[^\n]*)"),
         }
 
-        st.markdown('<div class="section-header">📋 &nbsp;Datos Extraídos</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">📋 &nbsp;Informe de la Operación</div>', unsafe_allow_html=True)
         st.markdown(tabla_html(list(resultados.items())), unsafe_allow_html=True)
 
         st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
