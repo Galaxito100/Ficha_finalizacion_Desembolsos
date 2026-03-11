@@ -263,11 +263,9 @@ def extraer_presentacion_informes(ruta, extension):
         for k in resultados:
             resultados[k] = f"Error: {e}"
     return resultados
-def extraer_segunda_linea_prestamo(ruta, extension):
+def extraer_segunda_linea_prestamo_mejorado(ruta, extension):
     """
-    Busca la celda 'Monto del préstamo aprobado CAF' y devuelve
-    todo el contenido del valor (ambas líneas) cuando no hay
-    etiqueta 'Desembolsado:' explícita.
+    Versión mejorada que extrae el valor completo de la celda
     """
     try:
         if extension == ".docx":
@@ -275,23 +273,21 @@ def extraer_segunda_linea_prestamo(ruta, extension):
             doc = Document(ruta)
             for tabla in doc.tables:
                 for fila in tabla.rows:
-                    # Sin deduplicar — necesitamos ver todas las celdas raw
                     celdas_raw = [c.text.strip() for c in fila.cells]
-                    # La etiqueta puede estar repetida por celda combinada; tomamos la primera
+                    # Verificar si es la fila del monto del préstamo
                     etiqueta = celdas_raw[0].lower() if celdas_raw else ""
-                    if "monto del pr" not in etiqueta or "aprobado caf" not in etiqueta:
-                        continue
-                    # La celda de valor es la última celda única
-                    celdas_unicas = list(dict.fromkeys(celdas_raw))
-                    if len(celdas_unicas) < 2:
-                        continue
-                    # Tomar el texto completo de la celda valor (todos sus párrafos)
-                    celda_valor = fila.cells[-1]
-                    texto_celda = celda_valor.text.strip()
-                    if texto_celda and texto_celda != "-":
-                        return texto_celda
-    except Exception:
-        pass
+                    if "monto del pr" in etiqueta and "aprobado caf" in etiqueta:
+                        # Tomar la última celda que contiene el valor
+                        celda_valor = fila.cells[-1]
+                        texto_completo = celda_valor.text.strip()
+                        
+                        # Si el texto contiene saltos de línea, tomarlos todos
+                        if texto_completo and texto_completo != "-":
+                            # Limpiar espacios extras pero mantener la estructura
+                            lineas = [line.strip() for line in texto_completo.split('\n') if line.strip()]
+                            return ' '.join(lineas) if lineas else texto_completo
+    except Exception as e:
+        return f"Error: {e}"
     return "No encontrado"
 
 def tabla_html(filas):
@@ -314,7 +310,13 @@ if procesar:
         with st.spinner("Procesando documento..."):
             texto       = extraer_texto_pdf(ruta_tmp) if extension == ".pdf" else extraer_texto_docx(ruta_tmp)
             informes    = extraer_presentacion_informes(ruta_tmp, extension)
-            desembolsado_celda = extraer_segunda_linea_prestamo(ruta_tmp, extension)
+            
+            # Usar la función mejorada para el monto aprobado
+            monto_aprobado = buscar_campo_aprobado(texto, "")
+            
+            # Si no se encuentra con la función mejorada, intentar con la extracción de celda
+            if monto_aprobado == "No encontrado":
+                monto_aprobado = extraer_segunda_linea_prestamo_mejorado(ruta_tmp, extension)
 
         os.unlink(ruta_tmp)
 
@@ -324,7 +326,7 @@ if procesar:
             "Prestatario":                       buscar_campo(texto, r"Prestatario"                                + SEP + r"([^|\n]+)"),
             "País":                              buscar_campo(texto, r"Pa[ií]s"                                    + SEP + r"([^|\n]+)"),
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
-            "Monto préstamo CAF (Aprobado)":     buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"((?:Contractual[^|\n]+|(?:US\$|USD)\s*[\d.,]+[^|\n]*))"),
+            "Monto préstamo CAF (Aprobado)":     monto_aprobado,
             "Monto préstamo CAF (Desembolsado)": (
                 buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+[^\n]*)") or
                 buscar_campo(texto, r"((?:US\$|USD)\s*[\d.,]+\s*MM[^\n|]*(?:\(\d+%[^)]*\)))")
