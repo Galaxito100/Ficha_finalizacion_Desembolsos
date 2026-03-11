@@ -274,21 +274,22 @@ def extraer_segunda_linea_prestamo(ruta, extension):
             from docx import Document
             doc = Document(ruta)
             for tabla in doc.tables:
-                coincidencias = []
                 for fila in tabla.rows:
+                    # Sin deduplicar — necesitamos ver todas las celdas raw
                     celdas_raw = [c.text.strip() for c in fila.cells]
-                    celdas = list(dict.fromkeys(celdas_raw))
-                    if len(celdas) < 2:
+                    # La etiqueta puede estar repetida por celda combinada; tomamos la primera
+                    etiqueta = celdas_raw[0].lower() if celdas_raw else ""
+                    if "monto del pr" not in etiqueta or "aprobado caf" not in etiqueta:
                         continue
-                    etiqueta = celdas[0].lower()
-                    if "monto del pr" in etiqueta and "aprobado caf" in etiqueta:
-                        valor = celdas[-1].strip()
-                        if valor and valor != "-":
-                            coincidencias.append(valor)
-                if coincidencias:
-                    # Devolver toda la celda de la segunda fila (desembolsado)
-                    # o la primera si solo hay una
-                    return coincidencias[-1]
+                    # La celda de valor es la última celda única
+                    celdas_unicas = list(dict.fromkeys(celdas_raw))
+                    if len(celdas_unicas) < 2:
+                        continue
+                    # Tomar el texto completo de la celda valor (todos sus párrafos)
+                    celda_valor = fila.cells[-1]
+                    texto_celda = celda_valor.text.strip()
+                    if texto_celda and texto_celda != "-":
+                        return texto_celda
     except Exception:
         pass
     return "No encontrado"
