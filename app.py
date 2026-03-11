@@ -167,12 +167,46 @@ def extraer_texto_docx(ruta):
 
 SEP = r"[\s|]+"
 
-def buscar_campo(texto, patron, grupo=1):
-    match = re.search(patron, texto, re.IGNORECASE | re.MULTILINE)
-    if not match:
+def buscar_campo_aprobado(texto, patron_base):
+    """
+    Función específica para buscar el monto aprobado, que puede venir en diferentes formatos:
+    - Con la palabra "Contractual:"
+    - Directamente el monto con o sin paréntesis de porcentaje
+    - En múltiples líneas
+    """
+    # Patrón para encontrar la sección del monto aprobado
+    patron_seccion = rf"Monto del pr[eé]stamo[\s\S]*?aprobado CAF[\s\S]*?(?=(?:Monto|$))"
+    seccion = re.search(patron_seccion, texto, re.IGNORECASE)
+    
+    if not seccion:
         return "No encontrado"
-    valor = match.group(grupo).strip().strip("|").strip()
-    return valor if valor else "No encontrado"
+    
+    texto_seccion = seccion.group(0)
+    
+    # Patrones posibles para el valor (en orden de prioridad)
+    patrones = [
+        # Caso 1: Con "Contractual:" explícito
+        r"Contractual:\s*([^|\n]+(?:\([^)]*\))?)",
+        # Caso 2: Monto con porcentaje entre paréntesis
+        r"((?:US\$|USD)\s*[\d.,]+\s*MM?\s*\(\d+%\s*[^)]*\))",
+        # Caso 3: Monto simple con USD/US$ y MM
+        r"((?:US\$|USD)\s*[\d.,]+\s*MM?)",
+        # Caso 4: Cualquier línea que contenga USD y números después de "aprobado CAF"
+        r"aprobado CAF[\s\S]*?((?:US\$|USD)\s*[\d.,]+\s*[^\n]*)",
+        # Caso 5: Último recurso - tomar todo después de "aprobado CAF" hasta el siguiente campo
+        r"aprobado CAF[\s\S]*?([^|\n]+(?:\n[^|\n]+)?)"
+    ]
+    
+    for patron in patrones:
+        match = re.search(patron, texto_seccion, re.IGNORECASE)
+        if match:
+            valor = match.group(1).strip().strip("|").strip()
+            # Limpiar el valor de saltos de línea y espacios extras
+            valor = re.sub(r'\s+', ' ', valor)
+            if valor and valor not in ["-", "", "No encontrado"]:
+                return valor
+    
+    return "No encontrado"
 
 def normalizar(t):
     import unicodedata
