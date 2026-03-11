@@ -180,67 +180,92 @@ def normalizar(t):
 
 def extraer_presentacion_informes(ruta, extension):
     """
-    La tabla de 'Presentación de informes' es parte de una tabla mayor que incluye
-    'Cumplimiento contractual'. Cada fila relevante tiene la estructura:
-      ['Presentación de informes', 'Última auditoría', valor]   (o 'Final', 'Pendientes')
-    Estrategia: buscar filas donde la primera celda (normalizada) contenga
-    'presentaci' Y la segunda celda sea la sub-etiqueta conocida.
+    Busca PRIMERO el párrafo "4. Cumplimiento contractual" en el documento,
+    luego a partir de ahí busca la tabla de "Presentación de informes".
+    Etiquetas aceptadas (match parcial, sin tildes):
+      auditor, auditoria financiera → Última auditoría
+      informe final, final del prestamo, final → Final
+      condicion, pendiente → Pendientes
     """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
-    claves = {
-        "ultima auditoria": "Última auditoría",
-        "final":            "Final",
-        "pendientes":       "Pendientes",
-        # variantes alternativas
-        "auditoria financiera": "Última auditoría",
-        "informe final":        "Final",
-        "condiciones pendientes": "Pendientes",
-        "condicion":            "Pendientes",
-    }
+    claves = [
+        ("auditoria financiera", "Última auditoría"),
+        ("auditor",              "Última auditoría"),
+        ("informe final",        "Final"),
+        ("final del prestamo",   "Final"),
+        ("final",                "Final"),
+        ("condicion",            "Pendientes"),
+        ("pendiente",            "Pendientes"),
+    ]
+
     try:
         if extension == ".docx":
             from docx import Document
+            from docx.oxml.ns import qn
             from docx.table import Table
+
             doc = Document(ruta)
             cuerpo = doc.element.body
+            elementos = list(cuerpo)
 
-            for elem in cuerpo:
+            # ── Paso 1: encontrar índice donde empieza sección 4 ──────────────
+            seccion4_idx = 0
+            for i, elem in enumerate(elementos):
+                if elem.tag.split("}")[-1] == "p":
+                    texto_p = normalizar("".join(n.text or "" for n in elem.iter(qn("w:t"))))
+                    # Acepta "4.", "4 ", "4-" seguido de "cumplimiento"
+                    if re.search(r"4[\s.\-]+cumplimiento", texto_p):
+                        seccion4_idx = i
+                        break
+
+            # ── Paso 2: buscar tabla de presentación a partir de sección 4 ───
+            for i, elem in enumerate(elementos):
+                if i < seccion4_idx:
+                    continue
                 if elem.tag.split("}")[-1] != "tbl":
                     continue
+
                 tabla = Table(elem, doc)
-                # Verificar que esta tabla contenga "Presentación de informes"
                 texto_tabla = normalizar(" ".join(c.text for fila in tabla.rows for c in fila.cells))
                 if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
                     continue
-                # Iterar filas buscando las sub-etiquetas en la segunda columna
+
+                # Tabla encontrada — recorrer filas
                 for fila in tabla.rows:
-                    celdas_raw = [c.text.strip() for c in fila.cells]
-                    # Desduplicar preservando orden
-                    celdas = list(dict.fromkeys(celdas_raw))
-                    celdas = [c for c in celdas if c]
+                    # Leer celdas RAW sin deduplicar para preservar estructura
+                    raw = [c.text.strip() for c in fila.cells]
+                    # Deduplicar manteniendo orden (celdas combinadas repiten)
+                    seen = set()
+                    celdas = []
+                    for c in raw:
+                        if c and c not in seen:
+                            seen.add(c)
+                            celdas.append(c)
                     if len(celdas) < 2:
                         continue
-                    # La estructura es: [col_seccion, sub_etiqueta, valor]
-                    # Tras deduplicar: si col_seccion == sub_etiqueta quedan 2 celdas
-                    # Buscamos la sub-etiqueta en cualquier posición no-primera
-                    for j in range(1, len(celdas)):
-                        sub_norm = normalizar(celdas[j])
-                        nombre = claves.get(sub_norm)
-                        if nombre and resultados[nombre] == "No encontrado":
-                            # El valor está en la celda siguiente
-                            if j + 1 < len(celdas):
-                                resultados[nombre] = celdas[j + 1]
+
+                    # penúltima = etiqueta, última = valor
+                    etiqueta_norm = normalizar(celdas[-2])
+                    valor         = celdas[-1].strip()
+                    if not valor:
+                        continue
+
+                    for clave, nombre in claves:
+                        if clave in etiqueta_norm and resultados[nombre] == "No encontrado":
+                            resultados[nombre] = valor
                             break
+
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
                 texto_completo = "\n".join(p.extract_text() or "" for p in pdf.pages)
-            m_sec = re.search(r"cumplimiento\s+contractual", texto_completo, re.IGNORECASE)
+            m_sec = re.search(r"4[\s.]+cumplimiento\s+contractual", texto_completo, re.IGNORECASE)
             texto = texto_completo[m_sec.start():] if m_sec else texto_completo
-            for clave, nombre in claves.items():
+            for clave, nombre in claves:
                 m = re.search(rf"{re.escape(clave)}[^\n]*\n([^\n]+)", texto, re.IGNORECASE)
                 if m and resultados[nombre] == "No encontrado":
                     resultados[nombre] = m.group(1).strip()
+
     except Exception as e:
         for k in resultados:
             resultados[k] = f"Error: {e}"
