@@ -184,7 +184,6 @@ def extraer_presentacion_informes(ruta, extension):
     que corresponden siempre a etiqueta y valor en tablas de 3 columnas.
     """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
-    # etiqueta exacta (lower) → nombre del campo
     mapa_exacto = {
         "última auditoría": "Última auditoría",
         "ultima auditoria": "Última auditoría",
@@ -199,23 +198,16 @@ def extraer_presentacion_informes(ruta, extension):
                 texto_tabla = " ".join(c.text for fila in tabla.rows for c in fila.cells).lower()
                 if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
                     continue
-                # Determinar número de columnas físicas de la tabla
-                n_cols = len(tabla.columns)
                 for fila in tabla.rows:
-                    celdas_raw = [c.text.strip() for c in fila.cells]
-                    if n_cols == 3 and len(celdas_raw) >= 3:
-                        # Acceso directo: col[1]=etiqueta, col[2]=valor
-                        etiqueta = celdas_raw[1].lower().strip()
-                        valor    = celdas_raw[2].strip()
-                    else:
-                        # Fallback: desduplicar y usar penúltima/última
-                        celdas = list(dict.fromkeys(celdas_raw))
-                        celdas = [c for c in celdas if c]
-                        if len(celdas) < 2:
-                            continue
-                        etiqueta = celdas[-2].lower().strip()
-                        valor    = celdas[-1].strip()
-                    nombre = mapa_exacto.get(etiqueta)
+                    # Desduplicar: Word repite texto en celdas combinadas
+                    celdas = list(dict.fromkeys(c.text.strip() for c in fila.cells))
+                    celdas = [c for c in celdas if c]
+                    if len(celdas) < 2:
+                        continue
+                    # Siempre: penúltima = etiqueta, última = valor
+                    etiqueta = celdas[-2].lower().strip()
+                    valor    = celdas[-1].strip()
+                    nombre   = mapa_exacto.get(etiqueta)
                     if nombre and valor and resultados[nombre] == "No encontrado":
                         resultados[nombre] = valor
         else:
@@ -261,7 +253,7 @@ if procesar:
             "País":                              buscar_campo(texto, r"Pa[ií]s"                                    + SEP + r"([^|\n]+)"),
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
             "Monto préstamo CAF (Aprobado)":     buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"((?:Contractual[^|\n]+|(?:US\$|USD)\s*[\d.,]+[^|\n]*))"),
-            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"(?:Desembolsado\s*(?::|[|\s])+\s*)((?:US\$|USD)\s*[\d.,]+[^\n]*)"),
+            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+\s*MM[^\n]*)"),  
         }
 
         st.markdown('<div class="section-header">📋 &nbsp;Informe de la Operación</div>', unsafe_allow_html=True)
