@@ -176,14 +176,20 @@ def buscar_campo(texto, patron, grupo=1):
 
 def extraer_presentacion_informes(ruta, extension):
     """
-    Extrae Última auditoría, Final y Pendientes de la tabla
-    'Presentación de informes'. La celda izquierda está combinada
-    verticalmente, por lo que buscamos las sub-etiquetas en la columna del medio.
+    Tabla 'Presentación de informes': 3 columnas.
+      col[0] = "Presentación de informes" (celda combinada, puede repetirse)
+      col[1] = sub-etiqueta: "Última auditoría" / "Final" / "Pendientes"
+      col[2] = texto largo (el valor que queremos)
+    Usamos dict.fromkeys para limpiar duplicados de celdas combinadas,
+    luego tomamos siempre: etiqueta = celdas[1], valor = celdas[2].
     """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
-    claves_parciales = {
-        "ltima auditor": "Última auditoría",
-        "pendiente":     "Pendientes",
+    # Match exacto: la celda debe ser SOLO la etiqueta (strip+lower)
+    mapa_exacto = {
+        "última auditoría": "Última auditoría",
+        "ultima auditoria": "Última auditoría",
+        "final":            "Final",
+        "pendientes":       "Pendientes",
     }
     try:
         if extension == ".docx":
@@ -194,33 +200,22 @@ def extraer_presentacion_informes(ruta, extension):
                 if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
                     continue
                 for fila in tabla.rows:
+                    # Limpiar duplicados preservando orden (celdas combinadas repiten texto)
                     celdas = list(dict.fromkeys(c.text.strip() for c in fila.cells))
                     celdas = [c for c in celdas if c]
-                    for i, celda in enumerate(celdas):
-                        celda_lower = celda.lower().strip()
-
-                        # Match exacto para "Final" evita falsos positivos
-                        if celda_lower == "final" and resultados["Final"] == "No encontrado":
-                            ultima = celdas[-1]
-                            if ultima.lower().strip() != "final":
-                                resultados["Final"] = ultima
-                            elif len(celdas) > 1:
-                                resultados["Final"] = celdas[-2]
-                            continue
-
-                        # Match parcial para los demás campos
-                        for clave, nombre in claves_parciales.items():
-                            if clave in celda_lower and resultados[nombre] == "No encontrado":
-                                ultima = celdas[-1]
-                                if ultima.lower() != celda_lower:
-                                    resultados[nombre] = ultima
-                                elif len(celdas) > 1:
-                                    resultados[nombre] = celdas[-2]
+                    if len(celdas) < 2:
+                        continue
+                    # La etiqueta es la penúltima celda, el valor es la última
+                    etiqueta = celdas[-2].lower().strip()
+                    valor    = celdas[-1]
+                    for clave, nombre in mapa_exacto.items():
+                        if etiqueta == clave and resultados[nombre] == "No encontrado":
+                            resultados[nombre] = valor
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
                 texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
-            for clave, nombre in claves.items():
+            for clave, nombre in mapa.items():
                 m = re.search(rf"{clave}[^\n]*\n([^\n]+)", texto, re.IGNORECASE)
                 if m:
                     resultados[nombre] = m.group(1).strip()
@@ -272,7 +267,5 @@ if procesar:
             ("Final",            informes["Final"]),
             ("Pendientes",       informes["Pendientes"]),
         ]), unsafe_allow_html=True)
-
-        st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
