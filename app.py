@@ -296,8 +296,8 @@ if procesar:
             "Monto préstamo CAF (Desembolsado)": (
                 # Caso 1: tiene "Desembolsado:" explícito
                 buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+[^\n]*)") or
-                # Caso 2: línea con porcentaje entre paréntesis dentro del campo de préstamo aprobado
-                buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF[\s\S]*?(?:US\$|USD)\s*[\d.,]+[^\n]*\n\s*\|?\s*((?:US\$|USD)\s*[\d.,]+[^\n]*\(\d+%[^\n]*\))")
+                # Caso 2: cualquier monto USD/US$ seguido de porcentaje entre paréntesis
+                buscar_campo(texto, r"((?:US\$|USD)\s*[\d.,]+[^\n|]*\(\d+%[^\n|]*\))")
             ),
         }
 
