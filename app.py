@@ -6,7 +6,7 @@ from pathlib import Path
 
 # ── Configuración de página ────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="CAF – Extractor FR",
+    page_title="CAF – Herramienta Ejecutiva para informes de Fichas de Desembolsos",
     layout="wide",
     page_icon="🏦"
 )
