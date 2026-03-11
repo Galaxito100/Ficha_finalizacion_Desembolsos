@@ -187,12 +187,12 @@ def extraer_presentacion_informes(ruta, extension):
     # Patrones flexibles: la etiqueta CONTIENE alguna de estas cadenas
     # Orden de prioridad: se asigna al primer nombre que no esté encontrado
     patrones = [
-        ("auditor",                        "Última auditoría"),   # "Última auditoría", "Auditoría Financiera 2024"
-        ("informe final",                  "Final"),              # "Final", "Informe Final del Préstamo"
-        ("condiciones pendientes",         "Pendientes"),         # "Condiciones pendientes"
-        ("pendientes",                     "Pendientes"),         # "Pendientes" exacto — va después del anterior
-        ("final",                          "Final"),              # "Final" exacto — va después del anterior
+        ("auditor",     "Última auditoría"),
+        ("pendientes",  "Pendientes"),
+        ("final",       "Final"),
     ]
+    # Para "Final" y "Pendientes" exigimos match exacto en la etiqueta
+    exactos = {"final", "pendientes"}
     try:
         if extension == ".docx":
             from docx import Document
@@ -211,7 +211,8 @@ def extraer_presentacion_informes(ruta, extension):
                     etiqueta = celdas[-2].lower().strip()
                     valor    = celdas[-1]
                     for clave, nombre in patrones:
-                        if clave in etiqueta and resultados[nombre] == "No encontrado":
+                        coincide = (etiqueta == clave) if clave in exactos else (clave in etiqueta)
+                        if coincide and resultados[nombre] == "No encontrado":
                             resultados[nombre] = valor
                             break
         else:
@@ -257,7 +258,7 @@ if procesar:
             "País":                              buscar_campo(texto, r"Pa[ií]s"                                    + SEP + r"([^|\n]+)"),
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
             "Monto préstamo CAF (Aprobado)":     buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"((?:Contractual[^|\n]+|(?:US\$|USD)\s*[\d.,]+[^|\n]*))"),
-            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"(?:Desembolsado:\s*|Desembolsado[\s|]+)((?:US\$|USD)\s*[\d.,]+\s*(?:MM)?[^\n]*)"),
+            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"(?:Desembolsado[:\s|]+)((?:US\$|USD)\s*[\d.,]+[^\n|]*)"),  # captura hasta fin de línea sin cortar en |
         }
 
         st.markdown('<div class="section-header">📋 &nbsp;Informe de la Operación</div>', unsafe_allow_html=True)
@@ -271,4 +272,5 @@ if procesar:
             ("Pendientes",       informes["Pendientes"]),
         ]), unsafe_allow_html=True)
 
+        st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
         st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
