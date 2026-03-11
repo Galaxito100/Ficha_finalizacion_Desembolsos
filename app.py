@@ -263,37 +263,6 @@ def extraer_presentacion_informes(ruta, extension):
         for k in resultados:
             resultados[k] = f"Error: {e}"
     return resultados
-def extraer_segunda_linea_prestamo(ruta, extension):
-    """
-    Busca la celda 'Monto del préstamo aprobado CAF' y devuelve
-    todo el contenido del valor (ambas líneas) cuando no hay
-    etiqueta 'Desembolsado:' explícita.
-    """
-    try:
-        if extension == ".docx":
-            from docx import Document
-            doc = Document(ruta)
-            for tabla in doc.tables:
-                for fila in tabla.rows:
-                    # Sin deduplicar — necesitamos ver todas las celdas raw
-                    celdas_raw = [c.text.strip() for c in fila.cells]
-                    # La etiqueta puede estar repetida por celda combinada; tomamos la primera
-                    etiqueta = celdas_raw[0].lower() if celdas_raw else ""
-                    if "monto del pr" not in etiqueta or "aprobado caf" not in etiqueta:
-                        continue
-                    # La celda de valor es la última celda única
-                    celdas_unicas = list(dict.fromkeys(celdas_raw))
-                    if len(celdas_unicas) < 2:
-                        continue
-                    # Tomar el texto completo de la celda valor (todos sus párrafos)
-                    celda_valor = fila.cells[-1]
-                    texto_celda = celda_valor.text.strip()
-                    if texto_celda and texto_celda != "-":
-                        return texto_celda
-    except Exception:
-        pass
-    return "No encontrado"
-
 def tabla_html(filas):
     rows = ""
     for label, valor in filas:
@@ -314,7 +283,6 @@ if procesar:
         with st.spinner("Procesando documento..."):
             texto       = extraer_texto_pdf(ruta_tmp) if extension == ".pdf" else extraer_texto_docx(ruta_tmp)
             informes    = extraer_presentacion_informes(ruta_tmp, extension)
-            desembolsado_celda = extraer_segunda_linea_prestamo(ruta_tmp, extension)
 
         os.unlink(ruta_tmp)
 
@@ -329,7 +297,7 @@ if procesar:
                 # Caso 1: "Desembolsado:" explícito
                 buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+[^\n]*)") or
                 # Caso 2: segunda línea USD tras la etiqueta (misma lógica que Aprobado, una fila abajo)
-                buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"((?:Contractual[^|\n]+|(?:US\$|USD)\s*[\d.,]+[^|\n]*))")
+                buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF[\s\S]*?(?:US\$|USD)\s*[\d.,]+[^\n]*\n((?:US\$|USD)\s*[\d.,]+[^\n]*)")
             ),
         }
 
