@@ -263,6 +263,31 @@ def extraer_presentacion_informes(ruta, extension):
         for k in resultados:
             resultados[k] = f"Error: {e}"
     return resultados
+def extraer_segunda_linea_prestamo(ruta, extension):
+    """
+    Busca la celda 'Monto del préstamo aprobado CAF' y devuelve
+    la segunda línea de su valor (que es el monto desembolsado
+    cuando no tiene la etiqueta 'Desembolsado:' explícita).
+    """
+    try:
+        if extension == ".docx":
+            from docx import Document
+            doc = Document(ruta)
+            for tabla in doc.tables:
+                for fila in tabla.rows:
+                    celdas_raw = [c.text.strip() for c in fila.cells]
+                    celdas = list(dict.fromkeys(celdas_raw))
+                    etiqueta = celdas[0].lower() if celdas else ""
+                    if "monto del pr" in etiqueta and "aprobado caf" in etiqueta:
+                        # El valor está en la última celda, puede tener varias líneas
+                        valor = celdas[-1] if len(celdas) > 1 else ""
+                        lineas = [l.strip() for l in valor.splitlines() if l.strip()]
+                        if len(lineas) >= 2:
+                            return lineas[1]  # segunda línea = desembolsado
+    except Exception:
+        pass
+    return "No encontrado"
+
 def tabla_html(filas):
     rows = ""
     for label, valor in filas:
@@ -296,8 +321,8 @@ if procesar:
             "Monto préstamo CAF (Desembolsado)": (
                 # Caso 1: tiene "Desembolsado:" explícito
                 buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+[^\n]*)") or
-                # Caso 2: cualquier monto USD/US$ seguido de porcentaje entre paréntesis
-                buscar_campo(texto, r"((?:US\$|USD)\s*[\d.,]+[^\n|]*\(\d+%[^\n|]*\))")
+                # Caso 2: segunda línea de la celda "Monto del préstamo aprobado CAF"
+                extraer_segunda_linea_prestamo(ruta_tmp, extension)
             ),
         }
 
