@@ -283,19 +283,12 @@ def extraer_segunda_linea_prestamo(ruta, extension):
                     etiqueta = celdas[0].lower()
                     if "monto del pr" in etiqueta and "aprobado caf" in etiqueta:
                         valor = celdas[-1].strip()
-                        coincidencias.append(valor)
-                # La segunda coincidencia es la fila de desembolsado
-                if len(coincidencias) >= 2:
-                    v = coincidencias[1]
-                    if v and v != "-":
-                        return v
-                # Si solo hay una fila pero tiene dos líneas (salto dentro de celda)
-                elif len(coincidencias) == 1:
-                    lineas = [l.strip() for l in coincidencias[0].splitlines() if l.strip()]
-                    if len(lineas) >= 2:
-                        return "\n".join(lineas[1:])
-                    elif lineas:
-                        return lineas[0]
+                        if valor and valor != "-":
+                            coincidencias.append(valor)
+                if coincidencias:
+                    # Devolver toda la celda de la segunda fila (desembolsado)
+                    # o la primera si solo hay una
+                    return coincidencias[-1]
     except Exception:
         pass
     return "No encontrado"
@@ -318,8 +311,9 @@ if procesar:
             ruta_tmp = tmp.name
 
         with st.spinner("Procesando documento..."):
-            texto    = extraer_texto_pdf(ruta_tmp) if extension == ".pdf" else extraer_texto_docx(ruta_tmp)
-            informes = extraer_presentacion_informes(ruta_tmp, extension)
+            texto       = extraer_texto_pdf(ruta_tmp) if extension == ".pdf" else extraer_texto_docx(ruta_tmp)
+            informes    = extraer_presentacion_informes(ruta_tmp, extension)
+            desembolsado_celda = extraer_segunda_linea_prestamo(ruta_tmp, extension)
 
         os.unlink(ruta_tmp)
 
@@ -331,10 +325,8 @@ if procesar:
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
             "Monto préstamo CAF (Aprobado)":     buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"((?:Contractual[^|\n]+|(?:US\$|USD)\s*[\d.,]+[^|\n]*))"),
             "Monto préstamo CAF (Desembolsado)": (
-                # Caso 1: tiene "Desembolsado:" explícito
                 buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+[^\n]*)") or
-                # Caso 2: segunda línea de la celda "Monto del préstamo aprobado CAF"
-                extraer_segunda_linea_prestamo(ruta_tmp, extension)
+                desembolsado_celda
             ),
         }
 
