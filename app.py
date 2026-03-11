@@ -293,7 +293,12 @@ if procesar:
             "País":                              buscar_campo(texto, r"Pa[ií]s"                                    + SEP + r"([^|\n]+)"),
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
             "Monto préstamo CAF (Aprobado)":     buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"((?:Contractual[^|\n]+|(?:US\$|USD)\s*[\d.,]+[^|\n]*))"),
-            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+\s*MM[^\n]*)"),  
+            "Monto préstamo CAF (Desembolsado)": (
+                # Caso 1: tiene "Desembolsado:" explícito
+                buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+[^\n]*)") or
+                # Caso 2: línea con porcentaje entre paréntesis dentro del campo de préstamo aprobado
+                buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF[\s\S]*?(?:US\$|USD)\s*[\d.,]+[^\n]*\n\s*\|?\s*((?:US\$|USD)\s*[\d.,]+[^\n]*\(\d+%[^\n]*\))")
+            ),
         }
 
         st.markdown('<div class="section-header">📋 &nbsp;Informe de la Operación</div>', unsafe_allow_html=True)
