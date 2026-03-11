@@ -184,13 +184,15 @@ def extraer_presentacion_informes(ruta, extension):
     luego tomamos siempre: etiqueta = celdas[1], valor = celdas[2].
     """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
-    # Match exacto: la celda debe ser SOLO la etiqueta (strip+lower)
-    mapa_exacto = {
-        "última auditoría": "Última auditoría",
-        "ultima auditoria": "Última auditoría",
-        "final":            "Final",
-        "pendientes":       "Pendientes",
-    }
+    # Patrones flexibles: la etiqueta CONTIENE alguna de estas cadenas
+    # Orden de prioridad: se asigna al primer nombre que no esté encontrado
+    patrones = [
+        ("auditor",                        "Última auditoría"),   # "Última auditoría", "Auditoría Financiera 2024"
+        ("informe final",                  "Final"),              # "Final", "Informe Final del Préstamo"
+        ("condiciones pendientes",         "Pendientes"),         # "Condiciones pendientes"
+        ("pendientes",                     "Pendientes"),         # "Pendientes" exacto — va después del anterior
+        ("final",                          "Final"),              # "Final" exacto — va después del anterior
+    ]
     try:
         if extension == ".docx":
             from docx import Document
@@ -208,9 +210,10 @@ def extraer_presentacion_informes(ruta, extension):
                     # La etiqueta es la penúltima celda, el valor es la última
                     etiqueta = celdas[-2].lower().strip()
                     valor    = celdas[-1]
-                    for clave, nombre in mapa_exacto.items():
-                        if etiqueta == clave and resultados[nombre] == "No encontrado":
+                    for clave, nombre in patrones:
+                        if clave in etiqueta and resultados[nombre] == "No encontrado":
                             resultados[nombre] = valor
+                            break
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
@@ -253,8 +256,8 @@ if procesar:
             "Prestatario":                       buscar_campo(texto, r"Prestatario"                                + SEP + r"([^|\n]+)"),
             "País":                              buscar_campo(texto, r"Pa[ií]s"                                    + SEP + r"([^|\n]+)"),
             "Garante":                           buscar_campo(texto, r"Garante"                                    + SEP + r"([^|\n]+)"),
-            "Monto préstamo CAF (Aprobado)":     buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"(Contractual[^|\n]+)"),
-            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+\s*MM[^\n]*)"),
+            "Monto préstamo CAF (Aprobado)":     buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"((?:Contractual[^|\n]+|(?:US\$|USD)\s*[\d.,]+[^|\n]*))"),
+            "Monto préstamo CAF (Desembolsado)": buscar_campo(texto, r"(?:Desembolsado:\s*|Desembolsado[\s|]+)((?:US\$|USD)\s*[\d.,]+\s*(?:MM)?[^\n]*)"),
         }
 
         st.markdown('<div class="section-header">📋 &nbsp;Informe de la Operación</div>', unsafe_allow_html=True)
