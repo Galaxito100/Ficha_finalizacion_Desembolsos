@@ -180,34 +180,59 @@ def normalizar(t):
 
 def extraer_presentacion_informes(ruta, extension):
     """
-    Busca por palabras clave en la etiqueta (celda penúltima tras deduplicar).
-    Acepta variantes como:
-      "Última auditoría", "Auditoría Financiera 2024"  → Última auditoría
+    Busca la tabla 'Presentación de informes' SOLO dentro de la sección
+    4 'Cumplimiento contractual', para evitar falsos positivos de secciones anteriores.
+    Acepta variantes de etiqueta:
+      "Última auditoría", "Auditoría Financiera XXXX"  → Última auditoría
       "Final", "Informe Final del Préstamo"             → Final
       "Pendientes", "Condiciones pendientes"            → Pendientes
     """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
-
-    # Cada entrada: (palabra_clave_normalizada, nombre_resultado)
-    # El orden importa: se evalúa de arriba abajo y se asigna al primero que coincida
     claves = [
-        ("auditor",   "Última auditoría"),   # "auditoría", "Auditoría Financiera 2024"
-        ("informe final", "Final"),          # "Informe Final del Préstamo" — va ANTES de "final"
-        ("final",     "Final"),              # "Final" solo
-        ("condicion", "Pendientes"),         # "Condiciones pendientes"
-        ("pendiente", "Pendientes"),         # "Pendientes" solo
+        ("auditor",       "Última auditoría"),
+        ("informe final", "Final"),
+        ("final",         "Final"),
+        ("condicion",     "Pendientes"),
+        ("pendiente",     "Pendientes"),
     ]
 
     try:
         if extension == ".docx":
             from docx import Document
             doc = Document(ruta)
-            for tabla in doc.tables:
+
+            # ── Paso 1: encontrar el índice del párrafo/tabla donde empieza
+            #           la sección 4 "Cumplimiento contractual"
+            seccion4_idx = None
+            from docx.oxml.ns import qn
+            cuerpo = doc.element.body
+            elementos = list(cuerpo)  # párrafos y tablas en orden del documento
+
+            for i, elem in enumerate(elementos):
+                tag = elem.tag.split("}")[-1]
+                if tag == "p":
+                    texto_p = "".join(n.text or "" for n in elem.iter(qn("w:t")))
+                    if re.search(r"4[.\s]+cumplimiento\s+contractual", normalizar(texto_p)):
+                        seccion4_idx = i
+                        break
+
+            # ── Paso 2: buscar la tabla de presentación de informes
+            #           SOLO a partir de seccion4_idx
+            inicio = seccion4_idx if seccion4_idx is not None else 0
+
+            for i, elem in enumerate(elementos):
+                if i < inicio:
+                    continue
+                tag = elem.tag.split("}")[-1]
+                if tag != "tbl":
+                    continue
+                # Reconstruir objeto Table desde el elemento XML
+                from docx.table import Table
+                tabla = Table(elem, doc)
                 texto_tabla = " ".join(c.text for fila in tabla.rows for c in fila.cells).lower()
                 if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
                     continue
                 for fila in tabla.rows:
-                    # Desduplicar celdas combinadas verticalmente
                     celdas = list(dict.fromkeys(c.text.strip() for c in fila.cells))
                     celdas = [c for c in celdas if c]
                     if len(celdas) < 2:
@@ -220,14 +245,19 @@ def extraer_presentacion_informes(ruta, extension):
                         if clave in etiqueta_norm and resultados[nombre] == "No encontrado":
                             resultados[nombre] = valor
                             break
+
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
-                texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
+                texto_completo = "\n".join(p.extract_text() or "" for p in pdf.pages)
+            # Recortar desde sección 4
+            m_sec = re.search(r"4[.\s]+cumplimiento\s+contractual", texto_completo, re.IGNORECASE)
+            texto = texto_completo[m_sec.start():] if m_sec else texto_completo
             for clave, nombre in claves:
                 m = re.search(rf"{re.escape(clave)}[^\n]*\n([^\n]+)", texto, re.IGNORECASE)
                 if m and resultados[nombre] == "No encontrado":
                     resultados[nombre] = m.group(1).strip()
+
     except Exception as e:
         for k in resultados:
             resultados[k] = f"Error: {e}"
