@@ -180,77 +180,70 @@ def normalizar(t):
 
 def extraer_presentacion_informes(ruta, extension):
     """
-    Busca PRIMERO el párrafo "4. Cumplimiento contractual" en el documento,
-    luego a partir de ahí busca la tabla de "Presentación de informes".
-    Etiquetas aceptadas (match parcial, sin tildes):
-      auditor, auditoria financiera → Última auditoría
-      informe final, final del prestamo, final → Final
-      condicion, pendiente → Pendientes
+    Busca la tabla que contiene tanto "Cumplimiento contractual" como
+    "Presentación de informes". Dentro de esa tabla, empieza a leer
+    solo desde la fila de "Cumplimiento contractual" hacia abajo.
+    Etiquetas aceptadas (match parcial normalizado sin tildes):
+      auditor / auditoria financiera → Última auditoría
+      informe final del prestamo / informe final / final → Final
+      condicion / pendiente / pendientes → Pendientes
     """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
-    claves = [
-        ("auditoria financiera", "Última auditoría"),
-        ("auditor",              "Última auditoría"),
-        ("informe final",        "Final"),
-        ("final del prestamo",   "Final"),
-        ("final",                "Final"),
-        ("condicion",            "Pendientes"),
-        ("pendiente",            "Pendientes"),
+    mapa = [
+        ("ultima auditoria",           "Última auditoría"),
+        ("auditoria financiera",       "Última auditoría"),
+        ("auditor",                    "Última auditoría"),
+        ("informe final del prestamo", "Final"),
+        ("informe final",              "Final"),
+        ("final",                      "Final"),
+        ("condiciones pendientes",     "Pendientes"),
+        ("condicion",                  "Pendientes"),
+        ("pendientes",                 "Pendientes"),
+        ("pendiente",                  "Pendientes"),
     ]
 
     try:
         if extension == ".docx":
             from docx import Document
-            from docx.oxml.ns import qn
             from docx.table import Table
 
             doc = Document(ruta)
-            cuerpo = doc.element.body
-            elementos = list(cuerpo)
-
-            # ── Paso 1: encontrar índice donde empieza sección 4 ──────────────
-            seccion4_idx = 0
-            for i, elem in enumerate(elementos):
-                if elem.tag.split("}")[-1] == "p":
-                    texto_p = normalizar("".join(n.text or "" for n in elem.iter(qn("w:t"))))
-                    # Acepta "4.", "4 ", "4-" seguido de "cumplimiento"
-                    if re.search(r"4[\s.\-]+cumplimiento", texto_p):
-                        seccion4_idx = i
-                        break
-
-            # ── Paso 2: buscar tabla de presentación a partir de sección 4 ───
-            for i, elem in enumerate(elementos):
-                if i < seccion4_idx:
-                    continue
+            for elem in doc.element.body:
                 if elem.tag.split("}")[-1] != "tbl":
                     continue
-
                 tabla = Table(elem, doc)
                 texto_tabla = normalizar(" ".join(c.text for fila in tabla.rows for c in fila.cells))
-                if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
+
+                # Solo tablas que contengan AMBAS secciones
+                if "presentacion de informes" not in texto_tabla:
                     continue
 
-                # Tabla encontrada — recorrer filas
-                for fila in tabla.rows:
-                    # Leer celdas RAW sin deduplicar para preservar estructura
+                # Encontrar la fila donde está "Cumplimiento contractual"
+                # (o "Presentación de informes" si no hay encabezado de sección)
+                fila_inicio = 0
+                for j, fila in enumerate(tabla.rows):
+                    texto_fila = normalizar(" ".join(c.text for c in fila.cells))
+                    if "cumplimiento contractual" in texto_fila:
+                        fila_inicio = j
+                        break
+
+                # Leer filas desde fila_inicio
+                for j, fila in enumerate(tabla.rows):
+                    if j < fila_inicio:
+                        continue
                     raw = [c.text.strip() for c in fila.cells]
-                    # Deduplicar manteniendo orden (celdas combinadas repiten)
-                    seen = set()
-                    celdas = []
+                    seen = set(); celdas = []
                     for c in raw:
                         if c and c not in seen:
-                            seen.add(c)
-                            celdas.append(c)
+                            seen.add(c); celdas.append(c)
                     if len(celdas) < 2:
                         continue
-
-                    # penúltima = etiqueta, última = valor
                     etiqueta_norm = normalizar(celdas[-2])
-                    valor         = celdas[-1].strip()
-                    if not valor:
+                    valor = celdas[-1].strip()
+                    # Ignorar placeholders vacíos o guiones
+                    if not valor or valor in ("-", "—"):
                         continue
-
-                    for clave, nombre in claves:
+                    for clave, nombre in mapa:
                         if clave in etiqueta_norm and resultados[nombre] == "No encontrado":
                             resultados[nombre] = valor
                             break
@@ -259,9 +252,9 @@ def extraer_presentacion_informes(ruta, extension):
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
                 texto_completo = "\n".join(p.extract_text() or "" for p in pdf.pages)
-            m_sec = re.search(r"4[\s.]+cumplimiento\s+contractual", texto_completo, re.IGNORECASE)
+            m_sec = re.search(r"cumplimiento\s+contractual", texto_completo, re.IGNORECASE)
             texto = texto_completo[m_sec.start():] if m_sec else texto_completo
-            for clave, nombre in claves:
+            for clave, nombre in mapa:
                 m = re.search(rf"{re.escape(clave)}[^\n]*\n([^\n]+)", texto, re.IGNORECASE)
                 if m and resultados[nombre] == "No encontrado":
                     resultados[nombre] = m.group(1).strip()
