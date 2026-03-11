@@ -181,9 +181,8 @@ def extraer_presentacion_informes(ruta, extension):
     verticalmente, por lo que buscamos las sub-etiquetas en la columna del medio.
     """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
-    claves = {
+    claves_parciales = {
         "ltima auditor": "Última auditoría",
-        "final":         "Final",
         "pendiente":     "Pendientes",
     }
     try:
@@ -195,16 +194,24 @@ def extraer_presentacion_informes(ruta, extension):
                 if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
                     continue
                 for fila in tabla.rows:
-                    # Eliminar duplicados que genera Word en celdas combinadas
                     celdas = list(dict.fromkeys(c.text.strip() for c in fila.cells))
-                    celdas = [c for c in celdas if c]  # quitar vacías
+                    celdas = [c for c in celdas if c]
                     for i, celda in enumerate(celdas):
-                        celda_lower = celda.lower()
-                        for clave, nombre in claves.items():
+                        celda_lower = celda.lower().strip()
+
+                        # Match exacto para "Final" evita falsos positivos
+                        if celda_lower == "final" and resultados["Final"] == "No encontrado":
+                            ultima = celdas[-1]
+                            if ultima.lower().strip() != "final":
+                                resultados["Final"] = ultima
+                            elif len(celdas) > 1:
+                                resultados["Final"] = celdas[-2]
+                            continue
+
+                        # Match parcial para los demás campos
+                        for clave, nombre in claves_parciales.items():
                             if clave in celda_lower and resultados[nombre] == "No encontrado":
-                                # El texto largo es siempre la ÚLTIMA celda de la fila
                                 ultima = celdas[-1]
-                                # Asegurarse de que no sea la misma etiqueta
                                 if ultima.lower() != celda_lower:
                                     resultados[nombre] = ultima
                                 elif len(celdas) > 1:
@@ -265,5 +272,7 @@ if procesar:
             ("Final",            informes["Final"]),
             ("Pendientes",       informes["Pendientes"]),
         ]), unsafe_allow_html=True)
+
+        st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
