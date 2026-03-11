@@ -174,18 +174,20 @@ def buscar_campo(texto, patron, grupo=1):
     valor = match.group(grupo).strip().strip("|").strip()
     return valor if valor else "No encontrado"
 
+def normalizar(t):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn").strip()
+
 def extraer_presentacion_informes(ruta, extension):
     """
-    Tabla 'Presentación de informes': 3 columnas físicas en Word.
-      col[0] = "Presentación de informes" (combinada verticalmente → se repite al leer)
-      col[1] = sub-etiqueta exacta: "Última auditoría" / "Final" / "Pendientes"
+    Tabla 'Presentación de informes': 3 columnas en Word.
+      col[0] = "Presentación de informes" (celda combinada verticalmente, se repite)
+      col[1] = sub-etiqueta: "Última auditoría" / "Final" / "Pendientes"
       col[2] = valor (texto largo)
-    Estrategia: leemos las celdas RAW (con duplicados) y accedemos por índice fijo [1] y [2],
-    que corresponden siempre a etiqueta y valor en tablas de 3 columnas.
+    Usamos normalizar() para comparar sin tildes ni mayúsculas.
     """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
-    mapa_exacto = {
-        "última auditoría": "Última auditoría",
+    mapa = {
         "ultima auditoria": "Última auditoría",
         "final":            "Final",
         "pendientes":       "Pendientes",
@@ -199,22 +201,21 @@ def extraer_presentacion_informes(ruta, extension):
                 if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
                     continue
                 for fila in tabla.rows:
-                    # Desduplicar: Word repite texto en celdas combinadas
+                    # Desduplicar: Word repite texto en celdas combinadas verticalmente
                     celdas = list(dict.fromkeys(c.text.strip() for c in fila.cells))
                     celdas = [c for c in celdas if c]
                     if len(celdas) < 2:
                         continue
-                    # Siempre: penúltima = etiqueta, última = valor
-                    etiqueta = celdas[-2].lower().strip()
-                    valor    = celdas[-1].strip()
-                    nombre   = mapa_exacto.get(etiqueta)
+                    etiqueta_norm = normalizar(celdas[-2])
+                    valor         = celdas[-1].strip()
+                    nombre = mapa.get(etiqueta_norm)
                     if nombre and valor and resultados[nombre] == "No encontrado":
                         resultados[nombre] = valor
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
                 texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
-            for clave, nombre in mapa_exacto.items():
+            for clave, nombre in mapa.items():
                 m = re.search(rf"{re.escape(clave)}[^\n]*\n([^\n]+)", texto, re.IGNORECASE)
                 if m and resultados[nombre] == "No encontrado":
                     resultados[nombre] = m.group(1).strip()
@@ -222,7 +223,6 @@ def extraer_presentacion_informes(ruta, extension):
         for k in resultados:
             resultados[k] = f"Error: {e}"
     return resultados
-
 def tabla_html(filas):
     rows = ""
     for label, valor in filas:
