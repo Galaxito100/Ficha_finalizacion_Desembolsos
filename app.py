@@ -179,79 +179,68 @@ def normalizar(t):
     return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn").strip()
 
 def extraer_presentacion_informes(ruta, extension):
+    """
+    La tabla de 'Presentación de informes' es parte de una tabla mayor que incluye
+    'Cumplimiento contractual'. Cada fila relevante tiene la estructura:
+      ['Presentación de informes', 'Última auditoría', valor]   (o 'Final', 'Pendientes')
+    Estrategia: buscar filas donde la primera celda (normalizada) contenga
+    'presentaci' Y la segunda celda sea la sub-etiqueta conocida.
+    """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
-    claves = [
-        ("auditor",       "Última auditoría"),
-        ("informe final", "Final"),
-        ("final",         "Final"),
-        ("condicion",     "Pendientes"),
-        ("pendiente",     "Pendientes"),
-    ]
-
+    claves = {
+        "ultima auditoria": "Última auditoría",
+        "final":            "Final",
+        "pendientes":       "Pendientes",
+        # variantes alternativas
+        "auditoria financiera": "Última auditoría",
+        "informe final":        "Final",
+        "condiciones pendientes": "Pendientes",
+        "condicion":            "Pendientes",
+    }
     try:
         if extension == ".docx":
             from docx import Document
             from docx.table import Table
-            from docx.oxml.ns import qn
-
             doc = Document(ruta)
             cuerpo = doc.element.body
-            elementos = list(cuerpo)
 
-            # Paso 1: encontrar índice de sección 4 "Cumplimiento contractual"
-            seccion4_idx = None
-            for i, elem in enumerate(elementos):
-                if elem.tag.split("}")[-1] == "p":
-                    texto_p = normalizar("".join(n.text or "" for n in elem.iter(qn("w:t"))))
-                    # Acepta: "4. Cumplimiento contractual", "4 Cumplimiento contractual", etc.
-                    if re.search(r"4[\s.]+cumplimiento", texto_p):
-                        seccion4_idx = i
-                        break
-
-            # Si no encontró la sección 4, no buscar nada para evitar falsos positivos
-            if seccion4_idx is None:
-                for k in resultados:
-                    resultados[k] = "Sección 4 no encontrada"
-                return resultados
-
-            # Paso 2: buscar tabla de "Presentación de informes" SOLO desde seccion4_idx
-            for i, elem in enumerate(elementos):
-                if i <= seccion4_idx:
-                    continue
+            for elem in cuerpo:
                 if elem.tag.split("}")[-1] != "tbl":
                     continue
                 tabla = Table(elem, doc)
+                # Verificar que esta tabla contenga "Presentación de informes"
                 texto_tabla = normalizar(" ".join(c.text for fila in tabla.rows for c in fila.cells))
                 if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
                     continue
-                # Tabla encontrada — extraer filas
+                # Iterar filas buscando las sub-etiquetas en la segunda columna
                 for fila in tabla.rows:
-                    celdas = list(dict.fromkeys(c.text.strip() for c in fila.cells))
+                    celdas_raw = [c.text.strip() for c in fila.cells]
+                    # Desduplicar preservando orden
+                    celdas = list(dict.fromkeys(celdas_raw))
                     celdas = [c for c in celdas if c]
                     if len(celdas) < 2:
                         continue
-                    etiqueta_norm = normalizar(celdas[-2])
-                    valor         = celdas[-1].strip()
-                    if not valor:
-                        continue
-                    for clave, nombre in claves:
-                        if clave in etiqueta_norm and resultados[nombre] == "No encontrado":
-                            resultados[nombre] = valor
+                    # La estructura es: [col_seccion, sub_etiqueta, valor]
+                    # Tras deduplicar: si col_seccion == sub_etiqueta quedan 2 celdas
+                    # Buscamos la sub-etiqueta en cualquier posición no-primera
+                    for j in range(1, len(celdas)):
+                        sub_norm = normalizar(celdas[j])
+                        nombre = claves.get(sub_norm)
+                        if nombre and resultados[nombre] == "No encontrado":
+                            # El valor está en la celda siguiente
+                            if j + 1 < len(celdas):
+                                resultados[nombre] = celdas[j + 1]
                             break
-                break  # Solo procesar la primera tabla que coincida
-
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
                 texto_completo = "\n".join(p.extract_text() or "" for p in pdf.pages)
-            # Recortar desde sección 4
-            m_sec = re.search(r"4[\s.]+cumplimiento\s+contractual", texto_completo, re.IGNORECASE)
+            m_sec = re.search(r"cumplimiento\s+contractual", texto_completo, re.IGNORECASE)
             texto = texto_completo[m_sec.start():] if m_sec else texto_completo
-            for clave, nombre in claves:
+            for clave, nombre in claves.items():
                 m = re.search(rf"{re.escape(clave)}[^\n]*\n([^\n]+)", texto, re.IGNORECASE)
                 if m and resultados[nombre] == "No encontrado":
                     resultados[nombre] = m.group(1).strip()
-
     except Exception as e:
         for k in resultados:
             resultados[k] = f"Error: {e}"
