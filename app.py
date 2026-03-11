@@ -178,16 +178,8 @@ def normalizar(t):
     import unicodedata
     return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn").strip()
 
-def extraer_presentacion_informes(ruta, extension):
-    """
-    Busca la tabla que contiene tanto "Cumplimiento contractual" como
-    "Presentación de informes". Dentro de esa tabla, empieza a leer
-    solo desde la fila de "Cumplimiento contractual" hacia abajo.
-    Etiquetas aceptadas (match parcial normalizado sin tildes):
-      auditor / auditoria financiera → Última auditoría
-      informe final del prestamo / informe final / final → Final
-      condicion / pendiente / pendientes → Pendientes
-    """
+def extraer_presentacion_informes(ruta, extension): #Se aegura de que la pulcritud en la busqueda en la "Presentacion de Informes"
+
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
     mapa = [
         ("ultima auditoria",           "Última auditoría"),
@@ -297,7 +289,7 @@ if procesar:
                 # Caso 1: "Desembolsado:" explícito
                 buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+[^\n]*)") or
                 # Caso 2: segunda línea USD tras la etiqueta (misma lógica que Aprobado, una fila abajo)
-                buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF[\s\S]*?(?:US\$|USD)\s*[\d.,]+[^\n]*\n((?:US\$|USD)\s*[\d.,]+[^\n]*)")
+                buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"((?:Contractual[^|\n]+|(?:US\$|USD)\s*[\d.,]+[^|\n]*))")
             ),
         }
 
