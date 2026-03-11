@@ -327,7 +327,7 @@ if procesar:
             "Monto préstamo CAF (Aprobado)":     buscar_campo(texto, r"Monto del pr[eé]stamo[\s\S]*?aprobado CAF" + SEP + r"((?:Contractual[^|\n]+|(?:US\$|USD)\s*[\d.,]+[^|\n]*))"),
             "Monto préstamo CAF (Desembolsado)": (
                 buscar_campo(texto, r"Desembolsado:\s*((?:US\$|USD)\s*[\d.,]+[^\n]*)") or
-                desembolsado_celda
+                buscar_campo(texto, r"((?:US\$|USD)\s*[\d.,]+\s*MM[^\n|]*(?:\(\d+%[^)]*\)))")
             ),
         }
 
