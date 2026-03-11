@@ -195,16 +195,20 @@ def extraer_presentacion_informes(ruta, extension):
                 if "presentaci" not in texto_tabla or "informe" not in texto_tabla:
                     continue
                 for fila in tabla.rows:
-                    celdas = [c.text.strip() for c in fila.cells]
+                    # Eliminar duplicados que genera Word en celdas combinadas
+                    celdas = list(dict.fromkeys(c.text.strip() for c in fila.cells))
+                    celdas = [c for c in celdas if c]  # quitar vacías
                     for i, celda in enumerate(celdas):
                         celda_lower = celda.lower()
                         for clave, nombre in claves.items():
                             if clave in celda_lower and resultados[nombre] == "No encontrado":
-                                # Valor en la celda siguiente no vacía
-                                for j in range(i + 1, len(celdas)):
-                                    if celdas[j].strip():
-                                        resultados[nombre] = celdas[j].strip()
-                                        break
+                                # El texto largo es siempre la ÚLTIMA celda de la fila
+                                ultima = celdas[-1]
+                                # Asegurarse de que no sea la misma etiqueta
+                                if ultima.lower() != celda_lower:
+                                    resultados[nombre] = ultima
+                                elif len(celdas) > 1:
+                                    resultados[nombre] = celdas[-2]
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
