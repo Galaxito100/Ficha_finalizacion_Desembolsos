@@ -288,7 +288,7 @@ if procesar:
 
         # ── Sección 1: Informe de la Operación ────────────────────────────────
         resultados = {
-            "N° de Operación (CFA)":            buscar_campo(texto, r"CFA\s*[–\-]\s*([\d]+)"),
+            "N° de Operación (CFA)":            buscar_campo(texto, r"CFA\s*[–\-]\s*([\d]+(?:/[\d]+)*)"),
             "Nombre de la Operación":           buscar_campo(texto, r"Nombre de la operaci[oó]n"                  + SEP + r"([^|\n]+)"),
             "Prestatario":                       buscar_campo(texto, r"Prestatario"                                + SEP + r"([^|\n]+)"),
             "País":                              buscar_campo(texto, r"Pa[ií]s"                                    + SEP + r"([^|\n]+)"),
