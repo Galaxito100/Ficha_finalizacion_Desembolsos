@@ -334,7 +334,8 @@ def extraer_presentacion_informes(ruta, extension):
                     # La celda de valor es la última única
                     celda_contenido = celdas_unicas[-1] if len(celdas_unicas) >= 2 else None
                     valor_html = celda_a_html(celda_contenido) if celda_contenido else ""
-                    valor = valor_html if valor_html.strip() and valor_html != valor_texto else valor_texto
+                    # Usar HTML si tiene contenido; si no, usar texto plano
+                    valor = valor_html.strip() or valor_texto
                     for clave, nombre in mapa:
                         if clave in etiqueta_norm and resultados[nombre] == "No encontrado":
                             resultados[nombre] = valor
