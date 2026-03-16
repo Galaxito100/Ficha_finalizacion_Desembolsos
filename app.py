@@ -178,6 +178,35 @@ def normalizar(t):
     import unicodedata
     return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn").strip()
 
+def celda_a_html(celda):
+    """Convierte una celda docx a HTML preservando hipervínculos."""
+    from docx.oxml.ns import qn
+    partes = []
+    for parrafo in celda.paragraphs:
+        texto_parrafo = ""
+        for elem in parrafo._p:
+            tag = elem.tag.split("}")[-1]
+            if tag == "r":
+                t = elem.find(qn("w:t"))
+                if t is not None and t.text:
+                    texto_parrafo += t.text
+            elif tag == "hyperlink":
+                rId = elem.get(qn("r:id"))
+                url = ""
+                if rId and rId in celda.part.rels:
+                    url = celda.part.rels[rId].target_ref
+                texto_link = "".join(
+                    t.text for r in elem.findall(qn("w:r"))
+                    for t in r.findall(qn("w:t")) if t.text
+                )
+                if url and texto_link:
+                    texto_parrafo += f'<a href="{url}" target="_blank" style="color:#006BB6">{texto_link}</a>'
+                else:
+                    texto_parrafo += texto_link
+        if texto_parrafo.strip():
+            partes.append(texto_parrafo)
+    return "<br>".join(partes) if partes else ""
+
 def extraer_presentacion_informes(ruta, extension):
     """
     Busca la tabla que contiene tanto "Cumplimiento contractual" como
@@ -239,10 +268,13 @@ def extraer_presentacion_informes(ruta, extension):
                     if len(celdas) < 2:
                         continue
                     etiqueta_norm = normalizar(celdas[-2])
-                    valor = celdas[-1].strip()
+                    valor_texto = celdas[-1].strip()
                     # Ignorar placeholders vacíos o guiones
-                    if not valor or valor in ("-", "—"):
+                    if not valor_texto or valor_texto in ("-", "—"):
                         continue
+                    # Usar celda_a_html para preservar hipervínculos
+                    valor_html = celda_a_html(fila.cells[-1])
+                    valor = valor_html if valor_html.strip() else valor_texto
                     for clave, nombre in mapa:
                         if clave in etiqueta_norm and resultados[nombre] == "No encontrado":
                             resultados[nombre] = valor
