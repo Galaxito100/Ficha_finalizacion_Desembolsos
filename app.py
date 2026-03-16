@@ -179,18 +179,25 @@ def normalizar(t):
     return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn").strip()
 
 def celda_a_html(celda):
-    """Convierte una celda docx a HTML preservando hipervínculos."""
+    """Convierte una celda docx a HTML preservando hipervínculos.
+    Maneja dos tipos:
+      - w:hyperlink con r:id  → links normales
+      - HYPERLINK en w:instrText → links de SharePoint/campo
+    """
     from docx.oxml.ns import qn
+    import re as _re
+
     partes = []
     for parrafo in celda.paragraphs:
         texto_parrafo = ""
-        for elem in parrafo._p:
+        elems = list(parrafo._p)
+        i = 0
+        while i < len(elems):
+            elem = elems[i]
             tag = elem.tag.split("}")[-1]
-            if tag == "r":
-                t = elem.find(qn("w:t"))
-                if t is not None and t.text:
-                    texto_parrafo += t.text
-            elif tag == "hyperlink":
+
+            if tag == "hyperlink":
+                # Tipo 1: w:hyperlink con r:id (link estándar)
                 rId = elem.get(qn("r:id"))
                 url = ""
                 if rId and rId in celda.part.rels:
@@ -203,6 +210,50 @@ def celda_a_html(celda):
                     texto_parrafo += f'<a href="{url}" target="_blank" style="color:#006BB6">{texto_link}</a>'
                 else:
                     texto_parrafo += texto_link
+
+            elif tag == "fldChar":
+                # Tipo 2: campo HYPERLINK (SharePoint y otros)
+                fld_type = elem.get(qn("w:fldCharType"), "")
+                if fld_type == "begin":
+                    # Recoger todo hasta fldChar end
+                    url = ""
+                    texto_link = ""
+                    in_instr = False
+                    in_separate = False
+                    j = i + 1
+                    while j < len(elems):
+                        e = elems[j]
+                        etag = e.tag.split("}")[-1]
+                        if etag == "fldChar":
+                            ft = e.get(qn("w:fldCharType"), "")
+                            if ft == "separate":
+                                in_separate = True
+                            elif ft == "end":
+                                i = j  # avanzar el índice principal
+                                break
+                        elif etag == "r":
+                            instr = e.find(qn("w:instrText"))
+                            t_elem = e.find(qn("w:t"))
+                            if instr is not None and instr.text:
+                                # Extraer URL del instrText: HYPERLINK "url"
+                                m = _re.search(r'HYPERLINK\s+"([^"]+)"', instr.text)
+                                if m:
+                                    url = m.group(1)
+                            elif in_separate and t_elem is not None and t_elem.text:
+                                texto_link += t_elem.text
+                        j += 1
+                    if url and texto_link:
+                        texto_parrafo += f'<a href="{url}" target="_blank" style="color:#006BB6">{texto_link}</a>'
+                    elif texto_link:
+                        texto_parrafo += texto_link
+
+            elif tag == "r":
+                t = elem.find(qn("w:t"))
+                if t is not None and t.text:
+                    texto_parrafo += t.text
+
+            i += 1
+
         if texto_parrafo.strip():
             partes.append(texto_parrafo)
     return "<br>".join(partes) if partes else ""
@@ -272,19 +323,18 @@ def extraer_presentacion_informes(ruta, extension):
                     # Ignorar placeholders vacíos o guiones
                     if not valor_texto or valor_texto in ("-", "—"):
                         continue
-                    # Buscar la celda real de contenido (puede no ser la última por combinaciones)
-                    # La celda de contenido es la primera cuyo texto coincide con valor_texto
-                    celda_contenido = None
+                    # Buscar la celda real de contenido — última celda única (no repetida)
                     seen_ids = set()
+                    celdas_unicas = []
                     for c in fila.cells:
                         cid = id(c._tc)
                         if cid not in seen_ids:
                             seen_ids.add(cid)
-                            if c.text.strip() == valor_texto:
-                                celda_contenido = c
-                                break
+                            celdas_unicas.append(c)
+                    # La celda de valor es la última única
+                    celda_contenido = celdas_unicas[-1] if len(celdas_unicas) >= 2 else None
                     valor_html = celda_a_html(celda_contenido) if celda_contenido else ""
-                    valor = valor_html if valor_html.strip() else valor_texto
+                    valor = valor_html if valor_html.strip() and valor_html != valor_texto else valor_texto
                     for clave, nombre in mapa:
                         if clave in etiqueta_norm and resultados[nombre] == "No encontrado":
                             resultados[nombre] = valor
