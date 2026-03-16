@@ -180,9 +180,8 @@ def normalizar(t):
 
 def celda_a_html(celda):
     """Convierte una celda docx a HTML preservando hipervínculos.
-    Maneja dos tipos:
-      - w:hyperlink con r:id  → links normales
-      - HYPERLINK en w:instrText → links de SharePoint/campo
+    Tipo 1: w:hyperlink r:id  → links normales
+    Tipo 2: w:fldChar + w:instrText → links SharePoint/campo
     """
     from docx.oxml.ns import qn
     import re as _re
@@ -190,14 +189,18 @@ def celda_a_html(celda):
     partes = []
     for parrafo in celda.paragraphs:
         texto_parrafo = ""
+        # Aplanar todos los elementos del párrafo en una lista
         elems = list(parrafo._p)
-        i = 0
-        while i < len(elems):
-            elem = elems[i]
+        skip_until_end = False
+        url_campo = ""
+        texto_campo = ""
+        in_separate = False
+
+        for elem in elems:
             tag = elem.tag.split("}")[-1]
 
             if tag == "hyperlink":
-                # Tipo 1: w:hyperlink con r:id (link estándar)
+                # Tipo 1: w:hyperlink con r:id
                 rId = elem.get(qn("r:id"))
                 url = ""
                 if rId and rId in celda.part.rels:
@@ -211,48 +214,41 @@ def celda_a_html(celda):
                 else:
                     texto_parrafo += texto_link
 
-            elif tag == "fldChar":
-                # Tipo 2: campo HYPERLINK (SharePoint y otros)
-                fld_type = elem.get(qn("w:fldCharType"), "")
-                if fld_type == "begin":
-                    # Recoger todo hasta fldChar end
-                    url = ""
-                    texto_link = ""
-                    in_instr = False
-                    in_separate = False
-                    j = i + 1
-                    while j < len(elems):
-                        e = elems[j]
-                        etag = e.tag.split("}")[-1]
-                        if etag == "fldChar":
-                            ft = e.get(qn("w:fldCharType"), "")
-                            if ft == "separate":
-                                in_separate = True
-                            elif ft == "end":
-                                i = j  # avanzar el índice principal
-                                break
-                        elif etag == "r":
-                            instr = e.find(qn("w:instrText"))
-                            t_elem = e.find(qn("w:t"))
-                            if instr is not None and instr.text:
-                                # Extraer URL del instrText: HYPERLINK "url"
-                                m = _re.search(r'HYPERLINK\s+"([^"]+)"', instr.text)
-                                if m:
-                                    url = m.group(1)
-                            elif in_separate and t_elem is not None and t_elem.text:
-                                texto_link += t_elem.text
-                        j += 1
-                    if url and texto_link:
-                        texto_parrafo += f'<a href="{url}" target="_blank" style="color:#006BB6">{texto_link}</a>'
-                    elif texto_link:
-                        texto_parrafo += texto_link
-
             elif tag == "r":
-                t = elem.find(qn("w:t"))
-                if t is not None and t.text:
-                    texto_parrafo += t.text
+                # Puede contener fldChar, instrText, o texto normal
+                fld = elem.find(qn("w:fldChar"))
+                instr = elem.find(qn("w:instrText"))
+                t_elem = elem.find(qn("w:t"))
 
-            i += 1
+                if fld is not None:
+                    ft = fld.get(qn("w:fldCharType"), "")
+                    if ft == "begin":
+                        url_campo = ""
+                        texto_campo = ""
+                        in_separate = False
+                        skip_until_end = True
+                    elif ft == "separate":
+                        in_separate = True
+                    elif ft == "end":
+                        # Emitir el link acumulado
+                        if url_campo and texto_campo:
+                            texto_parrafo += f'<a href="{url_campo}" target="_blank" style="color:#006BB6">{texto_campo}</a>'
+                        elif texto_campo:
+                            texto_parrafo += texto_campo
+                        skip_until_end = False
+                        in_separate = False
+
+                elif instr is not None and instr.text:
+                    # Extraer URL de HYPERLINK "url"
+                    m = _re.search(r'HYPERLINK\s+"([^"]+)"', instr.text)
+                    if m:
+                        url_campo = m.group(1)
+
+                elif t_elem is not None and t_elem.text:
+                    if in_separate:
+                        texto_campo += t_elem.text
+                    elif not skip_until_end:
+                        texto_parrafo += t_elem.text
 
         if texto_parrafo.strip():
             partes.append(texto_parrafo)
