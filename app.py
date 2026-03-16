@@ -272,8 +272,18 @@ def extraer_presentacion_informes(ruta, extension):
                     # Ignorar placeholders vacíos o guiones
                     if not valor_texto or valor_texto in ("-", "—"):
                         continue
-                    # Usar celda_a_html para preservar hipervínculos
-                    valor_html = celda_a_html(fila.cells[-1])
+                    # Buscar la celda real de contenido (puede no ser la última por combinaciones)
+                    # La celda de contenido es la primera cuyo texto coincide con valor_texto
+                    celda_contenido = None
+                    seen_ids = set()
+                    for c in fila.cells:
+                        cid = id(c._tc)
+                        if cid not in seen_ids:
+                            seen_ids.add(cid)
+                            if c.text.strip() == valor_texto:
+                                celda_contenido = c
+                                break
+                    valor_html = celda_a_html(celda_contenido) if celda_contenido else ""
                     valor = valor_html if valor_html.strip() else valor_texto
                     for clave, nombre in mapa:
                         if clave in etiqueta_norm and resultados[nombre] == "No encontrado":
