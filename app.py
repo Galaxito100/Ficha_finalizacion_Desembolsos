@@ -392,6 +392,40 @@ def extraer_objetivo_general(ruta, extension):
         pass
     return "No encontrado"
 
+def extraer_dispensas(ruta, extension):
+    """Extrae el contenido completo de 'Dispensas y enmiendas' como HTML."""
+    try:
+        if extension == ".docx":
+            from docx import Document
+            doc = Document(ruta)
+            for tabla in doc.tables:
+                for fila in tabla.rows:
+                    seen = set(); unicas = []
+                    for c in fila.cells:
+                        cid = id(c._tc)
+                        if cid not in seen:
+                            seen.add(cid); unicas.append(c)
+                    if len(unicas) < 2:
+                        continue
+                    etiqueta = unicas[0].text.strip().lower()
+                    if "dispensa" not in etiqueta and "enmienda" not in etiqueta:
+                        continue
+                    valor = unicas[-1].text.strip()
+                    if valor and valor not in ("-", "—"):
+                        # Convertir saltos de línea a <br> y preservar párrafos
+                        parrafos = [p.strip() for p in valor.splitlines() if p.strip()]
+                        return "<br><br>".join(parrafos)
+        else:
+            import pdfplumber
+            with pdfplumber.open(ruta) as pdf:
+                texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
+            m = re.search(r"Dispensas y enmiendas[\s|]+([\s\S]+?)(?:\n[A-Z][^\n]{0,40}\n)", texto, re.IGNORECASE)
+            if m:
+                return m.group(1).strip()
+    except Exception:
+        pass
+    return "No encontrado"
+
 def tabla_html(filas):
     rows = ""
     for label, valor in filas:
@@ -413,6 +447,7 @@ if procesar:
             texto       = extraer_texto_pdf(ruta_tmp) if extension == ".pdf" else extraer_texto_docx(ruta_tmp)
             informes    = extraer_presentacion_informes(ruta_tmp, extension)
             objetivo    = extraer_objetivo_general(ruta_tmp, extension)
+            dispensas   = extraer_dispensas(ruta_tmp, extension)
 
         os.unlink(ruta_tmp)
 
@@ -432,21 +467,42 @@ if procesar:
             ))(),
         }
 
-        st.markdown('<div class="section-header">📋 &nbsp;Informe de la Operación</div>', unsafe_allow_html=True)
-        st.markdown(tabla_html(list(resultados.items())), unsafe_allow_html=True)
+        # ── Selector de vista ─────────────────────────────────────────────────
+        st.write("")
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            btn_informe = st.button("📋  Informe de Apoyo", use_container_width=True)
+        with col_v2:
+            btn_calidad = st.button("🔍  Verificación de Calidad de la Ficha", use_container_width=True)
 
-        # ── Sección 2: Presentación de Informes ───────────────────────────────
-        st.markdown('<div class="section-header">📄 &nbsp;Presentación de Informes</div>', unsafe_allow_html=True)
-        st.markdown(tabla_html([
-            ("Última auditoría", informes["Última auditoría"]),
-            ("Final",            informes["Final"]),
-            ("Pendientes",       informes["Pendientes"]),
-        ]), unsafe_allow_html=True)
+        # Persistir selección en session_state
+        if btn_informe:
+            st.session_state["vista"] = "informe"
+        if btn_calidad:
+            st.session_state["vista"] = "calidad"
+        if "vista" not in st.session_state:
+            st.session_state["vista"] = "informe"
 
-        # ── Sección 3: Descripción de la Operación ──────────────────────────────
-        st.markdown('<div class="section-header">📝 &nbsp;Descripción de la Operación</div>', unsafe_allow_html=True)
-        st.markdown(tabla_html([
-            ("Objetivo General", objetivo),
-        ]), unsafe_allow_html=True)
+        vista = st.session_state["vista"]
+
+        if vista == "informe":
+            st.markdown('<div class="section-header">📋 &nbsp;Informe de la Operación</div>', unsafe_allow_html=True)
+            st.markdown(tabla_html(list(resultados.items())), unsafe_allow_html=True)
+
+            st.markdown('<div class="section-header">📄 &nbsp;Presentación de Informes</div>', unsafe_allow_html=True)
+            st.markdown(tabla_html([
+                ("Última auditoría", informes["Última auditoría"]),
+                ("Final",            informes["Final"]),
+                ("Pendientes",       informes["Pendientes"]),
+            ]), unsafe_allow_html=True)
+
+            st.markdown('<div class="section-header">📝 &nbsp;Descripción de la Operación</div>', unsafe_allow_html=True)
+            st.markdown(tabla_html([
+                ("Objetivo General", objetivo),
+            ]), unsafe_allow_html=True)
+
+        elif vista == "calidad":
+            st.markdown('<div class="section-header">⚖️ &nbsp;Dispensas y Enmiendas</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background:white;padding:18px 24px;border-radius:8px;margin-top:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);font-size:13.5px;color:#1a2e45;line-height:1.8;">{dispensas}</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
