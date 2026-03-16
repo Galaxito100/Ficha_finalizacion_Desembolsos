@@ -444,7 +444,7 @@ if procesar:
                         _debug_info.append({
                             "etiqueta": _etq,
                             "texto": _unicas[-1].text.strip()[:200],
-                            "xml": _unicas[-1]._tc.xml[:1500],
+                            "xml": _unicas[-1]._tc.xml[:8000],
                         })
         except Exception:
             pass
