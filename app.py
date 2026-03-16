@@ -418,6 +418,32 @@ if procesar:
             informes    = extraer_presentacion_informes(ruta_tmp, extension)
             objetivo    = extraer_objetivo_general(ruta_tmp, extension)
 
+        # ── Debug de hipervínculos (activar con checkbox) ──────────────────────
+        if st.checkbox("🔍 Mostrar debug de celdas (hipervínculos)", value=False):
+            from docx import Document as _Doc
+            from docx.table import Table as _Tbl
+            _doc = _Doc(ruta_tmp)
+            for _elem in _doc.element.body:
+                if _elem.tag.split("}")[-1] != "tbl":
+                    continue
+                _tabla = _Tbl(_elem, _doc)
+                _txt = " ".join(c.text for f in _tabla.rows for c in f.cells).lower()
+                if "presentaci" not in _txt:
+                    continue
+                for _fila in _tabla.rows:
+                    _seen = set(); _unicas = []
+                    for _c in _fila.cells:
+                        _cid = id(_c._tc)
+                        if _cid not in _seen:
+                            _seen.add(_cid); _unicas.append(_c)
+                    if len(_unicas) < 2:
+                        continue
+                    _etq = _unicas[-2].text.strip()
+                    if any(x in _etq.lower() for x in ["auditor","final","pendiente","condicion"]):
+                        st.markdown(f"**Etiqueta:** `{_etq}`")
+                        st.markdown(f"**Texto plano:** `{_unicas[-1].text.strip()[:200]}`")
+                        st.code(_unicas[-1]._tc.xml[:1500], language="xml")
+
         os.unlink(ruta_tmp)
 
         # ── Sección 1: Informe de la Operación ────────────────────────────────
