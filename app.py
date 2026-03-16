@@ -414,38 +414,6 @@ if procesar:
             informes    = extraer_presentacion_informes(ruta_tmp, extension)
             objetivo    = extraer_objetivo_general(ruta_tmp, extension)
 
-        # Guardar debug en session_state ANTES de borrar el archivo
-        from docx import Document as _Doc
-        from docx.table import Table as _Tbl
-        _debug_info = []
-        try:
-            _doc = _Doc(ruta_tmp)
-            for _elem in _doc.element.body:
-                if _elem.tag.split("}")[-1] != "tbl":
-                    continue
-                _tabla = _Tbl(_elem, _doc)
-                _txt = " ".join(c.text for f in _tabla.rows for c in f.cells).lower()
-                if "presentaci" not in _txt:
-                    continue
-                for _fila in _tabla.rows:
-                    _seen = set(); _unicas = []
-                    for _c in _fila.cells:
-                        _cid = id(_c._tc)
-                        if _cid not in _seen:
-                            _seen.add(_cid); _unicas.append(_c)
-                    if len(_unicas) < 2:
-                        continue
-                    _etq = _unicas[-2].text.strip()
-                    if any(x in _etq.lower() for x in ["auditor","final","pendiente","condicion"]):
-                        _debug_info.append({
-                            "etiqueta": _etq,
-                            "texto": _unicas[-1].text.strip()[:200],
-                            "xml": _unicas[-1]._tc.xml[:8000],
-                        })
-        except Exception:
-            pass
-        st.session_state["debug_info"] = _debug_info
-
         os.unlink(ruta_tmp)
 
         # ── Sección 1: Informe de la Operación ────────────────────────────────
@@ -480,13 +448,5 @@ if procesar:
         st.markdown(tabla_html([
             ("Objetivo General", objetivo),
         ]), unsafe_allow_html=True)
-
-        # ── Debug (mostrar XML guardado en session_state) ────────────────────
-        if st.session_state.get("debug_info"):
-            with st.expander("🔍 Debug hipervínculos"):
-                for item in st.session_state["debug_info"]:
-                    st.markdown(f"**Etiqueta:** `{item['etiqueta']}`")
-                    st.markdown(f"**Texto plano:** `{item['texto']}`")
-                    st.code(item["xml"], language="xml")
 
         st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
