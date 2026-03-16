@@ -444,15 +444,15 @@ if procesar:
             ruta_tmp = tmp.name
 
         with st.spinner("Procesando documento..."):
-            texto       = extraer_texto_pdf(ruta_tmp) if extension == ".pdf" else extraer_texto_docx(ruta_tmp)
-            informes    = extraer_presentacion_informes(ruta_tmp, extension)
-            objetivo    = extraer_objetivo_general(ruta_tmp, extension)
-            dispensas   = extraer_dispensas(ruta_tmp, extension)
+            texto     = extraer_texto_pdf(ruta_tmp) if extension == ".pdf" else extraer_texto_docx(ruta_tmp)
+            informes  = extraer_presentacion_informes(ruta_tmp, extension)
+            objetivo  = extraer_objetivo_general(ruta_tmp, extension)
+            dispensas = extraer_dispensas(ruta_tmp, extension)
 
         os.unlink(ruta_tmp)
 
-        # ── Sección 1: Informe de la Operación ────────────────────────────────
-        resultados = {
+        # Guardar todo en session_state para persistir entre reruns
+        st.session_state["resultados"] = {
             "N° de Operación (CFA)":            buscar_campo(texto, r"CFA\s*[–\-]\s*([\d]+(?:/[\d]+)*)"),
             "Nombre de la Operación":           buscar_campo(texto, r"Nombre de la operaci[oó]n"                  + SEP + r"([^|\n]+)"),
             "Prestatario":                       buscar_campo(texto, r"Prestatario"                                + SEP + r"([^|\n]+)"),
@@ -466,43 +466,48 @@ if procesar:
                 buscar_campo(texto, r"Monto del pr[eé]stamo[^\n]*aprobado CAF[^\n]*\nMonto del pr[eé]stamo[^\n]*aprobado CAF[\s|]+([^\n]+)")
             ))(),
         }
+        st.session_state["informes"]  = informes
+        st.session_state["objetivo"]  = objetivo
+        st.session_state["dispensas"] = dispensas
+        st.session_state["vista"]     = "informe"
 
-        # ── Selector de vista ─────────────────────────────────────────────────
-        st.write("")
-        col_v1, col_v2 = st.columns(2)
-        with col_v1:
-            btn_informe = st.button("📋  Informe de Apoyo", use_container_width=True)
-        with col_v2:
-            btn_calidad = st.button("🔍  Verificación de Calidad de la Ficha", use_container_width=True)
+# ── Renderizado (siempre visible si hay datos en session_state) ────────────────
+if "resultados" in st.session_state:
+    resultados = st.session_state["resultados"]
+    informes   = st.session_state["informes"]
+    objetivo   = st.session_state["objetivo"]
+    dispensas  = st.session_state["dispensas"]
 
-        # Persistir selección en session_state
-        if btn_informe:
+    # Botones de vista
+    st.write("")
+    col_v1, col_v2 = st.columns(2)
+    with col_v1:
+        if st.button("📋  Informe de Apoyo", use_container_width=True):
             st.session_state["vista"] = "informe"
-        if btn_calidad:
+    with col_v2:
+        if st.button("🔍  Verificación de Calidad de la Ficha", use_container_width=True):
             st.session_state["vista"] = "calidad"
-        if "vista" not in st.session_state:
-            st.session_state["vista"] = "informe"
 
-        vista = st.session_state["vista"]
+    vista = st.session_state.get("vista", "informe")
 
-        if vista == "informe":
-            st.markdown('<div class="section-header">📋 &nbsp;Informe de la Operación</div>', unsafe_allow_html=True)
-            st.markdown(tabla_html(list(resultados.items())), unsafe_allow_html=True)
+    if vista == "informe":
+        st.markdown('<div class="section-header">📋 &nbsp;Informe de la Operación</div>', unsafe_allow_html=True)
+        st.markdown(tabla_html(list(resultados.items())), unsafe_allow_html=True)
 
-            st.markdown('<div class="section-header">📄 &nbsp;Presentación de Informes</div>', unsafe_allow_html=True)
-            st.markdown(tabla_html([
-                ("Última auditoría", informes["Última auditoría"]),
-                ("Final",            informes["Final"]),
-                ("Pendientes",       informes["Pendientes"]),
-            ]), unsafe_allow_html=True)
+        st.markdown('<div class="section-header">📄 &nbsp;Presentación de Informes</div>', unsafe_allow_html=True)
+        st.markdown(tabla_html([
+            ("Última auditoría", informes["Última auditoría"]),
+            ("Final",            informes["Final"]),
+            ("Pendientes",       informes["Pendientes"]),
+        ]), unsafe_allow_html=True)
 
-            st.markdown('<div class="section-header">📝 &nbsp;Descripción de la Operación</div>', unsafe_allow_html=True)
-            st.markdown(tabla_html([
-                ("Objetivo General", objetivo),
-            ]), unsafe_allow_html=True)
+        st.markdown('<div class="section-header">📝 &nbsp;Descripción de la Operación</div>', unsafe_allow_html=True)
+        st.markdown(tabla_html([
+            ("Objetivo General", objetivo),
+        ]), unsafe_allow_html=True)
 
-        elif vista == "calidad":
-            st.markdown('<div class="section-header">⚖️ &nbsp;Dispensas y Enmiendas</div>', unsafe_allow_html=True)
-            st.markdown(f'<div style="background:white;padding:18px 24px;border-radius:8px;margin-top:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);font-size:13.5px;color:#1a2e45;line-height:1.8;">{dispensas}</div>', unsafe_allow_html=True)
+    elif vista == "calidad":
+        st.markdown('<div class="section-header">⚖️ &nbsp;Dispensas y Enmiendas</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background:white;padding:18px 24px;border-radius:8px;margin-top:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);font-size:13.5px;color:#1a2e45;line-height:1.8;">{dispensas}</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
+    st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
