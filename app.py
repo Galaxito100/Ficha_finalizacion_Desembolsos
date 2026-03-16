@@ -263,6 +263,46 @@ def extraer_presentacion_informes(ruta, extension):
         for k in resultados:
             resultados[k] = f"Error: {e}"
     return resultados
+def extraer_objetivo_general(ruta, extension):
+    """
+    Busca la fila 'Objetivo general y específicos' y extrae
+    el párrafo que sigue a 'Objetivo General:' dentro de esa celda.
+    """
+    try:
+        if extension == ".docx":
+            from docx import Document
+            doc = Document(ruta)
+            for tabla in doc.tables:
+                for fila in tabla.rows:
+                    celdas_raw = [c.text.strip() for c in fila.cells]
+                    celdas = list(dict.fromkeys(celdas_raw))
+                    if len(celdas) < 2:
+                        continue
+                    if "objetivo general" not in celdas[0].lower():
+                        continue
+                    # Texto completo de la celda valor (última celda)
+                    celda_valor = fila.cells[-1].text
+                    # Buscar el párrafo después de "Objetivo General:"
+                    m = re.search(
+                        r"Objetivo General[:\s]*\n+([\s\S]+?)(?:\n\s*\n|\nObjetivos Espec|$)",
+                        celda_valor, re.IGNORECASE
+                    )
+                    if m:
+                        return " ".join(m.group(1).split())  # limpiar saltos internos
+                    # Si no hay etiqueta, devolver todo el contenido
+                    if celda_valor.strip() and celda_valor.strip() not in ("-", "—"):
+                        return celda_valor.strip()
+        else:
+            import pdfplumber
+            with pdfplumber.open(ruta) as pdf:
+                texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
+            m = re.search(r"Objetivo General[:\s]*\n+([\s\S]+?)(?:\n\s*\n|Objetivos Espec)", texto, re.IGNORECASE)
+            if m:
+                return " ".join(m.group(1).split())
+    except Exception:
+        pass
+    return "No encontrado"
+
 def tabla_html(filas):
     rows = ""
     for label, valor in filas:
@@ -283,6 +323,7 @@ if procesar:
         with st.spinner("Procesando documento..."):
             texto       = extraer_texto_pdf(ruta_tmp) if extension == ".pdf" else extraer_texto_docx(ruta_tmp)
             informes    = extraer_presentacion_informes(ruta_tmp, extension)
+            objetivo    = extraer_objetivo_general(ruta_tmp, extension)
 
         os.unlink(ruta_tmp)
 
@@ -311,6 +352,12 @@ if procesar:
             ("Última auditoría", informes["Última auditoría"]),
             ("Final",            informes["Final"]),
             ("Pendientes",       informes["Pendientes"]),
+        ]), unsafe_allow_html=True)
+
+        # ── Sección 3: Descripción de la Operación ──────────────────────────────
+        st.markdown('<div class="section-header">📝 &nbsp;Descripción de la Operación</div>', unsafe_allow_html=True)
+        st.markdown(tabla_html([
+            ("Objetivo General", objetivo),
         ]), unsafe_allow_html=True)
 
         st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
