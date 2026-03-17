@@ -558,6 +558,13 @@ if procesar:
         }
         st.session_state["informes"]  = informes
         st.session_state["objetivo"]  = objetivo
+        # Extraer total: busca línea que sea exactamente "Total | N" 
+        # (la fila Total de la tabla de dispensas)
+        _m = re.search(r"^Total\s*\|\s*([0-9]+)\s*$", texto, re.IGNORECASE | re.MULTILINE)
+        if not _m:
+            # Fallback: Total seguido directamente de número
+            _m = re.search(r"\bTotal\b\s*\|\s*([0-9]+)", texto, re.IGNORECASE)
+        total_dispensas = int(_m.group(1)) if _m else total_dispensas
         st.session_state["dispensas"]       = dispensas
         st.session_state["total_dispensas"] = total_dispensas
         st.session_state["vista"]     = "informe"
