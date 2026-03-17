@@ -439,32 +439,37 @@ def celda_dispensas_a_html(celda):
     return html if html.strip() else None
 
 def extraer_total_dispensas(ruta, extension):
-    """Extrae solo el número total de la fila Total de la tabla de dispensas."""
+    """Extrae el número de la fila Total de la tabla anidada en Dispensas y enmiendas."""
     try:
         if extension == ".docx":
             from docx import Document
             doc = Document(ruta)
             for tabla in doc.tables:
                 for fila in tabla.rows:
+                    # Buscar fila que tenga "dispensas" en alguna celda
+                    texto_fila = " ".join(c.text.strip() for c in fila.cells).lower()
+                    if "dispensa" not in texto_fila and "enmienda" not in texto_fila:
+                        continue
+                    # Recorrer todas las celdas únicas de esta fila
                     seen = set(); unicas = []
                     for c in fila.cells:
                         cid = id(c._tc)
                         if cid not in seen:
                             seen.add(cid); unicas.append(c)
-                    if len(unicas) < 2:
-                        continue
-                    if "dispensa" not in unicas[0].text.lower() and "enmienda" not in unicas[0].text.lower():
-                        continue
-                    # Buscar tabla interna y fila Total
-                    celda = unicas[-1]
-                    for tabla_interna in celda.tables:
-                        for fila_interna in tabla_interna.rows:
-                            celdas = list(dict.fromkeys(c.text.strip() for c in fila_interna.cells))
-                            if celdas and "total" in celdas[0].lower():
-                                # El número está en la última celda no vacía
-                                for v in reversed(celdas[1:]):
-                                    if v.strip().isdigit():
-                                        return int(v.strip())
+                    # Buscar tabla interna en CUALQUIER celda de la fila
+                    for celda in unicas:
+                        for tabla_interna in celda.tables:
+                            for fila_int in tabla_interna.rows:
+                                celdas_int = list(dict.fromkeys(
+                                    c.text.strip() for c in fila_int.cells
+                                ))
+                                # Fila que tenga solo "Total" o "*Total*" en primera celda
+                                if celdas_int and "total" in celdas_int[0].lower():
+                                    # Tomar último valor numérico de la fila
+                                    for v in reversed(celdas_int):
+                                        v_clean = v.strip().replace(".", "").replace(",", "")
+                                        if v_clean.isdigit():
+                                            return int(v_clean)
     except Exception:
         pass
     return None
@@ -558,13 +563,7 @@ if procesar:
         }
         st.session_state["informes"]  = informes
         st.session_state["objetivo"]  = objetivo
-        # Extraer total: busca línea que sea exactamente "Total | N" 
-        # (la fila Total de la tabla de dispensas)
-        _m = re.search(r"^Total\s*\|\s*([0-9]+)\s*$", texto, re.IGNORECASE | re.MULTILINE)
-        if not _m:
-            # Fallback: Total seguido directamente de número
-            _m = re.search(r"\bTotal\b\s*\|\s*([0-9]+)", texto, re.IGNORECASE)
-        total_dispensas = int(_m.group(1)) if _m else total_dispensas
+        # total_dispensas ya fue extraído directamente de la tabla interna del docx
         st.session_state["dispensas"]       = dispensas
         st.session_state["total_dispensas"] = total_dispensas
         st.session_state["vista"]     = "informe"
