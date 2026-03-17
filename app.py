@@ -137,6 +137,12 @@ with col_btn:
     st.write("")
     procesar = st.button("⚙️ Procesar")
 
+archivo_excel = st.file_uploader(
+    "Sube la base de EED (.xlsx) para verificación de calidad",
+    type=["xlsx"],
+    help="Debe contener la hoja 'Consolidado (2019 - 2025)' con columna 'Codigo de documento'"
+)
+
 # ── Funciones de extracción ────────────────────────────────────────────────────
 def extraer_texto_pdf(ruta):
     import pdfplumber
@@ -567,5 +573,46 @@ if "resultados" in st.session_state:
         )
         st.markdown('<div class="section-header">⚖️ &nbsp;Dispensas y Enmiendas</div>', unsafe_allow_html=True)
         st.markdown(f'<div style="background:white;padding:18px 24px;border-radius:8px;margin-top:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);font-size:13.5px;color:#1a2e45;line-height:1.8;">{dispensas_html}</div>', unsafe_allow_html=True)
+
+        # ── Comparación con base Excel ─────────────────────────────────────────
+        if archivo_excel is not None:
+            st.markdown('<div class="section-header">📊 &nbsp;Verificación contra Base EED</div>', unsafe_allow_html=True)
+            try:
+                import pandas as pd
+
+                df = pd.read_excel(archivo_excel, sheet_name="Consolidado (2019 - 2025)")
+
+                # Buscar columna "Codigo de documento" (tolerante a variaciones)
+                col_codigo = next(
+                    (c for c in df.columns if "codigo" in c.lower() and "doc" in c.lower()), None
+                )
+                if col_codigo is None:
+                    st.warning("⚠️ No se encontró la columna 'Codigo de documento' en el Excel.")
+                else:
+                    # Contar códigos distintos no vacíos
+                    total_excel = df[col_codigo].dropna().nunique()
+
+                    # Extraer total del docx desde la tabla de dispensas
+                    m_total = re.search(r"Total.*?([\d]+)", dispensas, re.IGNORECASE | re.DOTALL)
+                    total_ficha = int(m_total.group(1)) if m_total else None
+
+                    # Mostrar comparación
+                    col_a, col_b, col_c = st.columns(3)
+                    with col_a:
+                        st.metric("Total en Ficha (docx)", total_ficha if total_ficha else "No encontrado")
+                    with col_b:
+                        st.metric("Total en Base Excel", total_excel)
+                    with col_c:
+                        if total_ficha is not None:
+                            if total_ficha == total_excel:
+                                st.markdown('<div style="background:#E8F5E9;border-left:5px solid #43A047;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:14px;color:#1b5e20;font-weight:700">✅ Coinciden</div>', unsafe_allow_html=True)
+                            else:
+                                diff = total_ficha - total_excel
+                                signo = "+" if diff > 0 else ""
+                                st.markdown(f'<div style="background:#FFF8E1;border-left:5px solid #F5A623;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:14px;color:#5a3e00;font-weight:700">⚠️ Diferencia: {signo}{diff}</div>', unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error al leer el Excel: {e}")
+        else:
+            st.info("📂 Sube la base de EED (.xlsx) para comparar el total de dispensas.")
 
     st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
