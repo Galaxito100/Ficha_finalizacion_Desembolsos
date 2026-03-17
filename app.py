@@ -609,7 +609,7 @@ if "resultados" in st.session_state:
     elif vista == "calidad":
         # Resaltar siglas de documentos (EED, CCI, GOI, STCI) + guion o espacio + número
         dispensas_html = re.sub(
-            r'((EED|CCI|GOI|STCI)[-\s][\d]+)',
+            r'((EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)',
             r'<span style="color:#006BB6;font-weight:700">\1</span>',
             dispensas
         )
@@ -661,7 +661,7 @@ if "resultados" in st.session_state:
 
                     total_ficha = total_dispensas
 
-                    # Fix 3: Mostrar comparación con mensaje descriptivo
+                    # Mostrar métricas y resultado
                     col_a, col_b, col_c = st.columns(3)
                     with col_a:
                         st.metric("Total en Ficha (docx)", total_ficha if total_ficha is not None else "No encontrado")
@@ -673,6 +673,43 @@ if "resultados" in st.session_state:
                                 st.markdown('<div style="background:#E8F5E9;border-left:5px solid #43A047;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:14px;color:#1b5e20;font-weight:700">✅ Coinciden</div>', unsafe_allow_html=True)
                             else:
                                 st.markdown('<div style="background:#FFF8E1;border-left:5px solid #F5A623;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:13px;color:#5a3e00;font-weight:700">⚠️ La cantidad de EED en la Ficha de Finalización de Desembolsos y la Base de Datos DRS no coincide</div>', unsafe_allow_html=True)
+
+                    # ── Tablas comparativas ───────────────────────────────────
+                    st.write("")
+                    col_t1, col_t2 = st.columns(2)
+
+                    # Tabla 1: códigos encontrados en la ficha
+                    codigos_ficha = sorted(set(re.findall(
+                        r'((?:EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)',
+                        dispensas, re.IGNORECASE
+                    )))
+                    with col_t1:
+                        st.markdown('**📄 Códigos en la Ficha (docx)**')
+                        if codigos_ficha:
+                            ficha_html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+                            ficha_html += '<tr><th style="background:#004A8F;color:white;padding:7px 12px;text-align:left">Código</th></tr>'
+                            for i, cod in enumerate(codigos_ficha):
+                                bg = "#EEF3F9" if i % 2 == 0 else "#ffffff"
+                                ficha_html += f'<tr><td style="background:{bg};padding:7px 12px;border-bottom:1px solid #dce6f0;color:#006BB6;font-weight:700">{cod}</td></tr>'
+                            ficha_html += '</table>'
+                            st.markdown(ficha_html, unsafe_allow_html=True)
+                        else:
+                            st.info("No se encontraron códigos.")
+
+                    # Tabla 2: códigos encontrados en la base Excel
+                    with col_t2:
+                        st.markdown('**📊 Códigos en la Base Excel**')
+                        if not df_filtrado.empty:
+                            codigos_excel = sorted(df_filtrado[col_codigo].dropna().unique().tolist())
+                            excel_html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+                            excel_html += '<tr><th style="background:#004A8F;color:white;padding:7px 12px;text-align:left">Código</th></tr>'
+                            for i, cod in enumerate(codigos_excel):
+                                bg = "#EEF3F9" if i % 2 == 0 else "#ffffff"
+                                excel_html += f'<tr><td style="background:{bg};padding:7px 12px;border-bottom:1px solid #dce6f0;color:#006BB6;font-weight:700">{cod}</td></tr>'
+                            excel_html += '</table>'
+                            st.markdown(excel_html, unsafe_allow_html=True)
+                        else:
+                            st.info("No se encontraron registros en el Excel.")
             except Exception as e:
                 st.error(f"Error al leer el Excel: {e}")
         else:
