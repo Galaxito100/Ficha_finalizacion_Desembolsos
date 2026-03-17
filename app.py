@@ -542,12 +542,8 @@ if procesar:
             informes  = extraer_presentacion_informes(ruta_tmp, extension)
             objetivo  = extraer_objetivo_general(ruta_tmp, extension)
             dispensas        = extraer_dispensas(ruta_tmp, extension)
-            # Extraer total del HTML de dispensas — busca celda "Total" seguida de número
-            # Cubre tanto <td> como <th> y texto en negrita
-            _m = re.search(
-                r"<t[dh][^>]*>\s*(?:<[^>]+>)*\s*Total\s*(?:</[^>]+>)*\s*</t[dh]>\s*<t[dh][^>]*>\s*(?:<[^>]+>)*\s*(\d+)",
-                dispensas, re.IGNORECASE
-            )
+            # Extraer total del HTML — busca ">Total</td><td...>NÚMERO"
+            _m = re.search(r">Total</td>\s*<td[^>]*>\s*(\d+)", dispensas, re.IGNORECASE)
             total_dispensas = int(_m.group(1)) if _m else None
 
         os.unlink(ruta_tmp)
@@ -663,14 +659,7 @@ if "resultados" in st.session_state:
                         # Contar códigos distintos no vacíos para ese CFA
                         total_excel = df_filtrado[col_codigo].dropna().nunique()
 
-                    # Total extraído del HTML de dispensas
                     total_ficha = total_dispensas
-                    # Debug temporal: mostrar fragmento HTML alrededor de "Total"
-                    idx = dispensas.lower().find("total")
-                    if idx >= 0:
-                        st.caption(f"🔍 Debug HTML alrededor de Total: `{dispensas[max(0,idx-20):idx+100]}`")
-                    else:
-                        st.caption("🔍 Debug: 'Total' no encontrado en HTML de dispensas")
 
                     # Fix 3: Mostrar comparación con mensaje descriptivo
                     col_a, col_b, col_c = st.columns(3)
