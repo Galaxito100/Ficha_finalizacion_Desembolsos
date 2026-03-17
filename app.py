@@ -392,6 +392,46 @@ def extraer_objetivo_general(ruta, extension):
         pass
     return "No encontrado"
 
+def celda_dispensas_a_html(celda):
+    """Convierte la celda de Dispensas y enmiendas a HTML,
+    preservando párrafos, tabla interna y lista numerada."""
+    from docx.oxml.ns import qn
+    html = ""
+
+    # Recorrer elementos en orden (párrafos y tablas internas)
+    for elem in celda._tc:
+        tag = elem.tag.split("}")[-1]
+
+        if tag == "p":
+            # Párrafo — extraer texto
+            texto = "".join(
+                n.text for n in elem.iter(qn("w:t")) if n.text
+            ).strip()
+            if texto:
+                html += f'<p style="margin:6px 0">{texto}</p>'
+
+        elif tag == "tbl":
+            # Tabla interna — renderizar como tabla HTML
+            from docx.table import Table
+            from docx.api import Document as _Doc
+            tabla_interna = Table(elem, celda._tc)
+            html += '<table style="border-collapse:collapse;width:100%;margin:10px 0">'
+            for i, fila in enumerate(tabla_interna.rows):
+                celdas = [c.text.strip() for c in fila.cells]
+                celdas = list(dict.fromkeys(celdas))
+                bg = "#EEF3F9" if i % 2 == 0 else "#ffffff"
+                es_header = i == 0
+                html += "<tr>"
+                for c in celdas:
+                    if es_header:
+                        html += f'<th style="background:#004A8F;color:white;padding:6px 10px;font-size:12px;text-align:left">{c}</th>'
+                    else:
+                        html += f'<td style="background:{bg};padding:6px 10px;font-size:12px;border-bottom:1px solid #dce6f0">{c}</td>'
+                html += "</tr>"
+            html += "</table>"
+
+    return html if html.strip() else None
+
 def extraer_dispensas(ruta, extension):
     """Extrae el contenido completo de 'Dispensas y enmiendas' como HTML."""
     try:
@@ -410,18 +450,20 @@ def extraer_dispensas(ruta, extension):
                     etiqueta = unicas[0].text.strip().lower()
                     if "dispensa" not in etiqueta and "enmienda" not in etiqueta:
                         continue
-                    valor = unicas[-1].text.strip()
-                    if valor and valor not in ("-", "—"):
-                        # Convertir saltos de línea a <br> y preservar párrafos
-                        parrafos = [p.strip() for p in valor.splitlines() if p.strip()]
-                        return "<br><br>".join(parrafos)
+                    celda = unicas[-1]
+                    valor_texto = celda.text.strip()
+                    if not valor_texto or valor_texto in ("-", "—"):
+                        continue
+                    html = celda_dispensas_a_html(celda)
+                    return html if html else valor_texto
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
                 texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
             m = re.search(r"Dispensas y enmiendas[\s|]+([\s\S]+?)(?:\n[A-Z][^\n]{0,40}\n)", texto, re.IGNORECASE)
             if m:
-                return m.group(1).strip()
+                parrafos = [p.strip() for p in m.group(1).splitlines() if p.strip()]
+                return "<br>".join(parrafos)
     except Exception:
         pass
     return "No encontrado"
