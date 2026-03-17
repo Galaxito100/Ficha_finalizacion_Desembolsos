@@ -610,7 +610,7 @@ if "resultados" in st.session_state:
                     df_filtrado = df[mask]
 
                     if df_filtrado.empty:
-                        st.warning(f"⚠️ No se encontraron filas para {cfas} en la columna '{col_operacion}'.")
+                        st.warning(f"⚠️ No se encontraron filas para CFA{cfa_raw} en la columna '{col_operacion}'.")
                         total_excel = 0
                     else:
                         # Contar códigos distintos no vacíos para ese CFA
