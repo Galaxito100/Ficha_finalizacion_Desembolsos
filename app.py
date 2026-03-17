@@ -582,15 +582,39 @@ if "resultados" in st.session_state:
 
                 df = pd.read_excel(archivo_excel, sheet_name="Consolidado (2019 - 2025)")
 
-                # Buscar columna "Codigo de documento" (tolerante a variaciones)
+                # Buscar columnas necesarias (tolerante a variaciones)
                 col_codigo = next(
                     (c for c in df.columns if "codigo" in c.lower() and "doc" in c.lower()), None
                 )
+                col_operacion = next(
+                    (c for c in df.columns if "operaci" in c.lower() and "n" in c.lower()), None
+                )
                 if col_codigo is None:
                     st.warning("⚠️ No se encontró la columna 'Codigo de documento' en el Excel.")
+                elif col_operacion is None:
+                    st.warning("⚠️ No se encontró la columna 'Número de la operación' en el Excel.")
                 else:
-                    # Contar códigos distintos no vacíos
-                    total_excel = df[col_codigo].dropna().nunique()
+                    # Obtener CFA de la ficha — separar números individuales
+                    cfa_raw = resultados.get("N° de Operación (CFA)", "")
+                    numeros_cfa = [n.strip() for n in cfa_raw.split("/") if n.strip()]
+
+                    # Filtrar: la celda debe contener TODOS los números del CFA
+                    # (cubre orden inverso: "8261/8262" == "8262/8261")
+                    col_op_upper = df[col_operacion].astype(str).str.upper()
+                    if len(numeros_cfa) == 1:
+                        mask = col_op_upper.str.contains(f"CFA{numeros_cfa[0]}", na=False)
+                    else:
+                        mask = col_op_upper.apply(
+                            lambda v: all(n in v for n in numeros_cfa)
+                        )
+                    df_filtrado = df[mask]
+
+                    if df_filtrado.empty:
+                        st.warning(f"⚠️ No se encontraron filas para {cfas} en la columna '{col_operacion}'.")
+                        total_excel = 0
+                    else:
+                        # Contar códigos distintos no vacíos para ese CFA
+                        total_excel = df_filtrado[col_codigo].dropna().nunique()
 
                     # Extraer total del docx desde la tabla de dispensas
                     m_total = re.search(r"Total.*?([\d]+)", dispensas, re.IGNORECASE | re.DOTALL)
