@@ -438,6 +438,37 @@ def celda_dispensas_a_html(celda):
 
     return html if html.strip() else None
 
+def extraer_total_dispensas(ruta, extension):
+    """Extrae solo el número total de la fila Total de la tabla de dispensas."""
+    try:
+        if extension == ".docx":
+            from docx import Document
+            doc = Document(ruta)
+            for tabla in doc.tables:
+                for fila in tabla.rows:
+                    seen = set(); unicas = []
+                    for c in fila.cells:
+                        cid = id(c._tc)
+                        if cid not in seen:
+                            seen.add(cid); unicas.append(c)
+                    if len(unicas) < 2:
+                        continue
+                    if "dispensa" not in unicas[0].text.lower() and "enmienda" not in unicas[0].text.lower():
+                        continue
+                    # Buscar tabla interna y fila Total
+                    celda = unicas[-1]
+                    for tabla_interna in celda.tables:
+                        for fila_interna in tabla_interna.rows:
+                            celdas = list(dict.fromkeys(c.text.strip() for c in fila_interna.cells))
+                            if celdas and "total" in celdas[0].lower():
+                                # El número está en la última celda no vacía
+                                for v in reversed(celdas[1:]):
+                                    if v.strip().isdigit():
+                                        return int(v.strip())
+    except Exception:
+        pass
+    return None
+
 def extraer_dispensas(ruta, extension):
     """Extrae el contenido completo de 'Dispensas y enmiendas' como HTML."""
     try:
@@ -505,7 +536,8 @@ if procesar:
             texto     = extraer_texto_pdf(ruta_tmp) if extension == ".pdf" else extraer_texto_docx(ruta_tmp)
             informes  = extraer_presentacion_informes(ruta_tmp, extension)
             objetivo  = extraer_objetivo_general(ruta_tmp, extension)
-            dispensas = extraer_dispensas(ruta_tmp, extension)
+            dispensas        = extraer_dispensas(ruta_tmp, extension)
+            total_dispensas  = extraer_total_dispensas(ruta_tmp, extension)
 
         os.unlink(ruta_tmp)
 
@@ -526,7 +558,8 @@ if procesar:
         }
         st.session_state["informes"]  = informes
         st.session_state["objetivo"]  = objetivo
-        st.session_state["dispensas"] = dispensas
+        st.session_state["dispensas"]       = dispensas
+        st.session_state["total_dispensas"] = total_dispensas
         st.session_state["vista"]     = "informe"
 
 # ── Renderizado (siempre visible si hay datos en session_state) ────────────────
@@ -534,7 +567,8 @@ if "resultados" in st.session_state:
     resultados = st.session_state["resultados"]
     informes   = st.session_state["informes"]
     objetivo   = st.session_state["objetivo"]
-    dispensas  = st.session_state["dispensas"]
+    dispensas       = st.session_state["dispensas"]
+    total_dispensas = st.session_state.get("total_dispensas")
 
     # Botones de vista
     st.write("")
@@ -617,13 +651,8 @@ if "resultados" in st.session_state:
                         # Contar códigos distintos no vacíos para ese CFA
                         total_excel = df_filtrado[col_codigo].dropna().nunique()
 
-                    # Fix 1: Extraer total buscando la fila "Total" en la tabla de dispensas
-                    # Busca el número que aparece justo después de la palabra "Total" al final
-                    m_total = re.search(r"\bTotal\b[^\d]*(\d+)\s*$", dispensas, re.IGNORECASE | re.MULTILINE)
-                    if not m_total:
-                        # Fallback: última ocurrencia de número después de "Total"
-                        m_total = re.search(r"\bTotal\b.*?(\d+)", dispensas[-200:], re.IGNORECASE | re.DOTALL)
-                    total_ficha = int(m_total.group(1)) if m_total else None
+                    # Total extraído directamente de la tabla interna del docx
+                    total_ficha = total_dispensas
 
                     # Fix 3: Mostrar comparación con mensaje descriptivo
                     col_a, col_b, col_c = st.columns(3)
