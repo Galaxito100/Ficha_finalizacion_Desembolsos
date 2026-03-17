@@ -602,7 +602,8 @@ if "resultados" in st.session_state:
                     # (cubre orden inverso: "8261/8262" == "8262/8261")
                     col_op_upper = df[col_operacion].astype(str).str.upper()
                     if len(numeros_cfa) == 1:
-                        mask = col_op_upper.str.contains(f"CFA{numeros_cfa[0]}", na=False)
+                        # Acepta CFA11724 y CFA011724 (con 0 delante)
+                        mask = col_op_upper.str.contains(f"CFA0*{numeros_cfa[0]}\\b", na=False, regex=True)
                     else:
                         mask = col_op_upper.apply(
                             lambda v: all(n in v for n in numeros_cfa)
@@ -616,14 +617,18 @@ if "resultados" in st.session_state:
                         # Contar códigos distintos no vacíos para ese CFA
                         total_excel = df_filtrado[col_codigo].dropna().nunique()
 
-                    # Extraer total del docx desde la tabla de dispensas
-                    m_total = re.search(r"Total.*?([\d]+)", dispensas, re.IGNORECASE | re.DOTALL)
+                    # Fix 1: Extraer total buscando la fila "Total" en la tabla de dispensas
+                    # Busca el número que aparece justo después de la palabra "Total" al final
+                    m_total = re.search(r"\bTotal\b[^\d]*(\d+)\s*$", dispensas, re.IGNORECASE | re.MULTILINE)
+                    if not m_total:
+                        # Fallback: última ocurrencia de número después de "Total"
+                        m_total = re.search(r"\bTotal\b.*?(\d+)", dispensas[-200:], re.IGNORECASE | re.DOTALL)
                     total_ficha = int(m_total.group(1)) if m_total else None
 
-                    # Mostrar comparación
+                    # Fix 3: Mostrar comparación con mensaje descriptivo
                     col_a, col_b, col_c = st.columns(3)
                     with col_a:
-                        st.metric("Total en Ficha (docx)", total_ficha if total_ficha else "No encontrado")
+                        st.metric("Total en Ficha (docx)", total_ficha if total_ficha is not None else "No encontrado")
                     with col_b:
                         st.metric("Total en Base Excel", total_excel)
                     with col_c:
@@ -631,9 +636,7 @@ if "resultados" in st.session_state:
                             if total_ficha == total_excel:
                                 st.markdown('<div style="background:#E8F5E9;border-left:5px solid #43A047;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:14px;color:#1b5e20;font-weight:700">✅ Coinciden</div>', unsafe_allow_html=True)
                             else:
-                                diff = total_ficha - total_excel
-                                signo = "+" if diff > 0 else ""
-                                st.markdown(f'<div style="background:#FFF8E1;border-left:5px solid #F5A623;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:14px;color:#5a3e00;font-weight:700">⚠️ Diferencia: {signo}{diff}</div>', unsafe_allow_html=True)
+                                st.markdown('<div style="background:#FFF8E1;border-left:5px solid #F5A623;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:13px;color:#5a3e00;font-weight:700">⚠️ La cantidad de EED en la Ficha de Finalización de Desembolsos y la Base de Datos DRS no coincide</div>', unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"Error al leer el Excel: {e}")
         else:
