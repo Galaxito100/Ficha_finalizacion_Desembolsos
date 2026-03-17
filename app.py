@@ -474,6 +474,16 @@ def tabla_html(filas):
         rows += f"<tr><td>{label}</td><td>{valor or '—'}</td></tr>"
     return f'<table class="caf-table">{rows}</table>'
 
+# ── Limpiar resultados si no hay archivo ─────────────────────────────────────
+if archivo is None and "resultados" in st.session_state:
+    for k in ["resultados","informes","objetivo","dispensas","vista"]:
+        st.session_state.pop(k, None)
+
+# ── Limpiar si no hay archivo ─────────────────────────────────────────────────
+if archivo is None:
+    for k in ["resultados", "informes", "objetivo", "dispensas", "vista"]:
+        st.session_state.pop(k, None)
+
 # ── Procesamiento ──────────────────────────────────────────────────────────────
 if procesar:
     if archivo is None:
@@ -549,9 +559,9 @@ if "resultados" in st.session_state:
         ]), unsafe_allow_html=True)
 
     elif vista == "calidad":
-        # Resaltar EED-xxx y EED xxx en azul
+        # Resaltar siglas de documentos (EED, CCI, GOI, STCI) + guion o espacio + número
         dispensas_html = re.sub(
-            r'(EED[-\s]\d+)',
+            r'((EED|CCI|GOI|STCI)[-\s][\d]+)',
             r'<span style="color:#006BB6;font-weight:700">\1</span>',
             dispensas
         )
