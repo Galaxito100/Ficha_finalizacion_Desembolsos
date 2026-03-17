@@ -542,7 +542,9 @@ if procesar:
             informes  = extraer_presentacion_informes(ruta_tmp, extension)
             objetivo  = extraer_objetivo_general(ruta_tmp, extension)
             dispensas        = extraer_dispensas(ruta_tmp, extension)
-            total_dispensas  = extraer_total_dispensas(ruta_tmp, extension)
+            # Extraer total directo del HTML de dispensas que ya generamos
+            _m = re.search(r"<td[^>]*>\s*Total\s*</td>\s*<td[^>]*>\s*(\d+)\s*</td>", dispensas, re.IGNORECASE)
+            total_dispensas  = int(_m.group(1)) if _m else None
 
         os.unlink(ruta_tmp)
 
