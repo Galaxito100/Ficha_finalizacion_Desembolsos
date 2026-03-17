@@ -549,7 +549,13 @@ if "resultados" in st.session_state:
         ]), unsafe_allow_html=True)
 
     elif vista == "calidad":
+        # Resaltar EED-xxx y EED xxx en azul
+        dispensas_html = re.sub(
+            r'(EED[-\s]\d+)',
+            r'<span style="color:#006BB6;font-weight:700">\1</span>',
+            dispensas
+        )
         st.markdown('<div class="section-header">⚖️ &nbsp;Dispensas y Enmiendas</div>', unsafe_allow_html=True)
-        st.markdown(f'<div style="background:white;padding:18px 24px;border-radius:8px;margin-top:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);font-size:13.5px;color:#1a2e45;line-height:1.8;">{dispensas}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background:white;padding:18px 24px;border-radius:8px;margin-top:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);font-size:13.5px;color:#1a2e45;line-height:1.8;">{dispensas_html}</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
