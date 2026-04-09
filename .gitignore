@@ -1,0 +1,7 @@
+# Ignorar archivos de secretos de Streamlit
+.streamlit/secrets.toml
+
+# Ignorar archivos temporales de Python
+*.pyc
+__pycache__/
+.DS_Store
