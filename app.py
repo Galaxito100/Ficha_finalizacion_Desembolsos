@@ -143,6 +143,14 @@ archivo_excel = st.file_uploader(
     help="Debe contener la hoja 'Consolidado (2019 - 2025)' con columna 'Codigo de documento'"
 )
 
+# ── Upload PDFs adicionales para contraste ────────────────────────────────────
+pdfs_adicionales = st.file_uploader(
+    "📚 PDFs de respaldo para contraste (EED, CCI, etc.)",
+    type=["pdf"],
+    accept_multiple_files=True,
+    help="Selecciona múltiples PDFs para extraer y contrastar códigos"
+)
+
 # ── Funciones de extracción ────────────────────────────────────────────────────
 def extraer_texto_pdf(ruta):
     import pdfplumber
@@ -358,6 +366,7 @@ def extraer_presentacion_informes(ruta, extension):
         for k in resultados:
             resultados[k] = f"Error: {e}"
     return resultados
+
 def extraer_objetivo_general(ruta, extension):
     """
     Busca la fila 'Objetivo general y específicos' y extrae
@@ -510,6 +519,28 @@ def extraer_dispensas(ruta, extension):
         pass
     return "No encontrado"
 
+def extraer_codigos_de_pdfs(pdfs):
+    """Extrae códigos EED/CCI/GOI/STCI de múltiples PDFs"""
+    import pdfplumber, re, tempfile, os
+    
+    codigos_encontrados = {}
+    for pdf in pdfs:
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp.write(pdf.read())
+                ruta_tmp = tmp.name
+            texto = ""
+            with pdfplumber.open(ruta_tmp) as f:
+                for p in f.pages:
+                    t = p.extract_text()
+                    if t: texto += t + "\n"
+            codigos = set(re.findall(r'((?:EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)', texto, re.I))
+            codigos_encontrados[pdf.name] = sorted(list(codigos))
+            os.unlink(ruta_tmp)
+        except Exception as e:
+            codigos_encontrados[pdf.name] = f"Error: {e}"
+    return codigos_encontrados
+
 def tabla_html(filas):
     rows = ""
     for label, valor in filas:
@@ -523,7 +554,7 @@ if archivo is None and "resultados" in st.session_state:
 
 # ── Limpiar si no hay archivo ─────────────────────────────────────────────────
 if archivo is None:
-    for k in ["resultados", "informes", "objetivo", "dispensas", "vista"]:
+    for k in ["resultados", "informes", "objetivo", "dispensas", "vista", "codigos_pdfs"]:
         st.session_state.pop(k, None)
 
 # ── Procesamiento ──────────────────────────────────────────────────────────────
@@ -545,6 +576,12 @@ if procesar:
             # Extraer total del HTML — busca ">Total</td><td...>NÚMERO"
             _m = re.search(r">Total</td>\s*<td[^>]*>\s*(\d+)", dispensas, re.IGNORECASE)
             total_dispensas = int(_m.group(1)) if _m else None
+            
+            # Procesar PDFs adicionales si existen
+            codigos_pdfs = {}
+            if pdfs_adicionales:
+                with st.spinner("Analizando PDFs adicionales..."):
+                    codigos_pdfs = extraer_codigos_de_pdfs(pdfs_adicionales)
 
         os.unlink(ruta_tmp)
 
@@ -568,6 +605,7 @@ if procesar:
         # total_dispensas ya fue extraído directamente de la tabla interna del docx
         st.session_state["dispensas"]       = dispensas
         st.session_state["total_dispensas"] = total_dispensas
+        st.session_state["codigos_pdfs"] = codigos_pdfs
         st.session_state["vista"]     = "informe"
 
 # ── Renderizado (siempre visible si hay datos en session_state) ────────────────
@@ -577,6 +615,7 @@ if "resultados" in st.session_state:
     objetivo   = st.session_state["objetivo"]
     dispensas       = st.session_state["dispensas"]
     total_dispensas = st.session_state.get("total_dispensas")
+    codigos_pdfs = st.session_state.get("codigos_pdfs", {})
 
     # Botones de vista
     st.write("")
@@ -668,11 +707,13 @@ if "resultados" in st.session_state:
                     with col_b:
                         st.metric("Total en Base Excel", total_excel)
                     with col_c:
-                        if total_ficha is not None:
-                            if total_ficha == total_excel:
-                                st.markdown('<div style="background:#E8F5E9;border-left:5px solid #43A047;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:14px;color:#1b5e20;font-weight:700">✅ Coinciden</div>', unsafe_allow_html=True)
-                            else:
-                                st.markdown('<div style="background:#FFF8E1;border-left:5px solid #F5A623;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:13px;color:#5a3e00;font-weight:700">⚠️ La cantidad de EED en la Ficha de Finalización de Desembolsos y la Base de Datos DRS no coincide</div>', unsafe_allow_html=True)
+                        st.metric("PDFs analizados", len(pdfs_adicionales) if pdfs_adicionales else 0)
+                    
+                    if total_ficha is not None:
+                        if total_ficha == total_excel:
+                            st.markdown('<div style="background:#E8F5E9;border-left:5px solid #43A047;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:14px;color:#1b5e20;font-weight:700">✅ Coinciden</div>', unsafe_allow_html=True)
+                        else:
+                            st.markdown('<div style="background:#FFF8E1;border-left:5px solid #F5A623;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:13px;color:#5a3e00;font-weight:700">⚠️ La cantidad de EED en la Ficha de Finalización de Desembolsos y la Base de Datos DRS no coincide</div>', unsafe_allow_html=True)
 
                     # ── Tablas comparativas ───────────────────────────────────
                     st.write("")
@@ -710,6 +751,35 @@ if "resultados" in st.session_state:
                             st.markdown(excel_html, unsafe_allow_html=True)
                         else:
                             st.info("No se encontraron registros en el Excel.")
+                    
+                    # ── Códigos extraídos de PDFs adicionales ─────────────────
+                    if codigos_pdfs:
+                        st.write("")
+                        st.markdown('<div class="section-header">📑 &nbsp;Códigos en PDFs subidos</div>', unsafe_allow_html=True)
+                        
+                        # Unir todos los códigos de todos los PDFs
+                        todos_codigos = set()
+                        for cods in codigos_pdfs.values():
+                            if isinstance(cods, list):
+                                todos_codigos.update(cods)
+                        
+                        if todos_codigos:
+                            col_p1, col_p2 = st.columns(2)
+                            with col_p1:
+                                st.markdown('**Códigos únicos encontrados:**')
+                                for cod in sorted(todos_codigos):
+                                    st.markdown(f'<span style="background:#EEF3F9;padding:4px 10px;border-radius:4px;margin:2px;display:inline-block;font-size:12.5px;color:#004A8F;font-weight:600">{cod}</span>', unsafe_allow_html=True)
+                            
+                            with col_p2:
+                                st.markdown('**Por archivo:**')
+                                for nombre, cods in codigos_pdfs.items():
+                                    if isinstance(cods, list) and cods:
+                                        st.markdown(f'📄 {nombre}<br><small style="color:#666">{", ".join(cods)}</small>', unsafe_allow_html=True)
+                                    elif isinstance(cods, str):
+                                        st.markdown(f'📄 {nombre} <small style="color:#c62828">({cods})</small>', unsafe_allow_html=True)
+                        else:
+                            st.info("No se encontraron códigos (EED/CCI/GOI/STCI) en los PDFs subidos.")
+
             except Exception as e:
                 st.error(f"Error al leer el Excel: {e}")
         else:
