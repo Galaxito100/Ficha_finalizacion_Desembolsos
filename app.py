@@ -703,3 +703,39 @@ if resultados: # Solo mostrar si hay datos
             st.info("📂 Sube la base de EED (.xlsx) para comparar el total de dispensas.")
 
     st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
+
+
+
+
+
+
+
+
+
+
+
+    # ── PRUEBA DE SEGURIDAD (Puedes borrar esto cuando quieras) ───────────────
+    with st.expander("🔒 Verificar Cifrado (Solo para ti)"):
+        st.write("Aquí puedes ver cómo se ven los datos reales (cifrados) vs lo que ves en pantalla:")
+        
+        # Mostramos un dato cualquiera, por ejemplo la Operación
+        op_cifrada = st.session_state.get("resultados_encrypted", "N/A")
+        op_real = resultados.get("N° de Operación (CFA)", "N/A")
+        
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            st.markdown("**🔴 Dato REAL (Visible):**")
+            st.code(op_real)
+        
+        with col_v2:
+            st.markdown("**🟢 Dato CIFRADO (En memoria):**")
+            # Si existe dato cifrado, mostramos los primeros 50 caracteres para no saturar
+            if op_cifrada and op_cifrada != "N/A":
+                st.code(str(op_cifrada)[:60] + "...")
+            else:
+                st.code("No hay datos procesados aún")
+        
+        if op_cifrada != "N/A" and "gAAAAAB" in str(op_cifrada):
+            st.success("✅ **Seguridad Activa:** Los datos en memoria están irreconocibles.")
+        else:
+            st.warning("⚠️ Parece que no hay datos cifrados o el cifrado falló.")
