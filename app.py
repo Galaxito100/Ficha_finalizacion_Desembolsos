@@ -887,5 +887,4 @@ if resultados:
             st.info("📂 Sube la base de EED (.xlsx) para comparar el total de dispensas.")
 
     st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos - 🔐 Datos Cifrados</div>', unsafe_allow_html=True)
-            st.warning("⚠️ Parece que no hay datos cifrados o el cifrado falló.")
-
+st.warning("⚠️ Parece que no hay datos cifrados o el cifrado falló.")
