@@ -531,8 +531,7 @@ def tabla_html(filas):
 # ── Limpiar si no hay archivo ─────────────────────────────────────────────────
 if archivo is None:
     for k in ["resultados_encrypted", "informes_encrypted", "objetivo_encrypted", 
-              "dispensas_encrypted", "vista", "codigos_pdfs_encrypted", "total_dispensas",
-              "excel_datos_encrypted", "comparacion_encrypted"]:
+              "dispensas_encrypted", "vista", "codigos_pdfs_encrypted", "total_dispensas"]:
         st.session_state.pop(k, None)
 
 # ── Procesamiento ──────────────────────────────────────────────────────────────
@@ -605,181 +604,36 @@ else:
 if resultados:
     total_dispensas = st.session_state.get("total_dispensas")
 
-    # ── SECCIÓN DE DEMOSTRACIÓN DE SEGURIDAD ──────────────────────────────────
+    # Resumen simple de seguridad
     st.markdown("---")
-    st.markdown('<div class="section-header">🔐 DEMOSTRACIÓN DE SEGURIDAD - CIFRADO DE DATOS</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">🔐 SEGURIDAD - DATOS CIFRADOS</div>', unsafe_allow_html=True)
     
     st.markdown("""
     <div class="security-box">
-        <div class="security-badge">✅ SEGURIDAD ACTIVA - FERNET (AES-128-CBC)</div>
+        <div class="security-badge">✅ CIFRADO ACTIVO - FERNET (AES-128-CBC)</div>
         <p style="margin: 10px 0; color: #495057; font-size: 13px;">
-            <strong>Estado:</strong> Todos los datos sensibles extraídos están cifrados en memoria y session_state.<br>
-            <strong>Algoritmo:</strong> Fernet (simétrico AES-128-CBC con HMAC-SHA256)<br>
-            <strong>Protección:</strong> Los datos solo son legibles durante el procesamiento en RAM. 
-            En reposo (session_state) están completamente cifrados.
+            Todos los datos sensibles están cifrados en session_state usando Fernet (AES-128-CBC + HMAC-SHA256).
+            Solo se descifran temporalmente para visualización.
         </p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Tabs para organizar la demostración
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📋 Informe de Operación", 
-        "📄 Informes y Auditoría", 
-        "📝 Descripción", 
-        "📑 Documentos ZIP"
-    ])
-    
-    with tab1:
-        st.markdown("**🔒 Datos Cifrados - Informe de la Operación**")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("### 🔴 Datos en Claro (Para visualización)")
-            st.markdown("Estos datos se descifran temporalmente para mostrarse en pantalla:")
-            
-            for key, value in resultados.items():
-                st.markdown(f'<div class="decrypted-text"><b>{key}:</b><br>{value}</div>', unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("### 🟢 Datos Cifrados (En memoria)")
-            st.markdown("Así se ven los datos almacenados en session_state:")
-            
-            if st.session_state.get("resultados_encrypted"):
-                datos_cifrados = st.session_state["resultados_encrypted"]
-                st.markdown(f'<div class="encrypted-text"><b>Blob cifrado completo:</b><br>{datos_cifrados[:100]}...</div>', unsafe_allow_html=True)
-                
-                st.markdown("---")
-                st.markdown("**Cada campo individual está cifrado dentro del JSON:**")
-                
-                for key in resultados.keys():
-                    st.markdown(f'<div class="encrypted-text"><b>{key}:</b><br>[CIFRADO]</div>', unsafe_allow_html=True)
-    
-    with tab2:
-        st.markdown("**🔒 Datos Cifrados - Presentación de Informes**")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("### 🔴 Datos en Claro")
-            for key, value in informes.items():
-                st.markdown(f'<div class="decrypted-text"><b>{key}:</b><br>{value[:100]}{"..." if len(value) > 100 else ""}</div>', unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("### 🟢 Datos Cifrados")
-            if st.session_state.get("informes_encrypted"):
-                st.markdown(f'<div class="encrypted-text">{st.session_state["informes_encrypted"][:100]}...</div>', unsafe_allow_html=True)
-    
-    with tab3:
-        st.markdown("**🔒 Datos Cifrados - Descripción de la Operación**")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("### 🔴 Objetivo General (Claro)")
-            st.markdown(f'<div class="decrypted-text">{objetivo[:200]}{"..." if len(objetivo) > 200 else ""}</div>', unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("### 🟢 Objetivo General (Cifrado)")
-            if st.session_state.get("objetivo_encrypted"):
-                st.markdown(f'<div class="encrypted-text">{st.session_state["objetivo_encrypted"][:100]}...</div>', unsafe_allow_html=True)
-        
-        st.markdown("---")
-        st.markdown("**📋 Dispensas y Enmiendas**")
-        
-        col3, col4 = st.columns(2)
-        
-        with col3:
-            st.markdown("### 🔴 Dispensas (Claro)")
-            import re as re_clean
-            dispensas_limpio = re_clean.sub(r'<[^>]+>', '', dispensas)[:300]
-            st.markdown(f'<div class="decrypted-text">{dispensas_limpio}{"..." if len(dispensas) > 300 else ""}</div>', unsafe_allow_html=True)
-        
-        with col4:
-            st.markdown("### 🟢 Dispensas (Cifrado)")
-            if st.session_state.get("dispensas_encrypted"):
-                st.markdown(f'<div class="encrypted-text">{st.session_state["dispensas_encrypted"][:100]}...</div>', unsafe_allow_html=True)
-    
-    with tab4:
-        st.markdown("**🔒 Códigos Extraídos de PDFs (ZIP)**")
-        
-        if codigos_pdfs:
-            st.markdown(f"**Total de archivos procesados:** {len(codigos_pdfs)}")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("### 🔴 Códigos Extraídos (Claro)")
-                for nombre, codigos in codigos_pdfs.items():
-                    if isinstance(codigos, list) and codigos:
-                        st.markdown(f'<div class="decrypted-text"><b>📄 {nombre}:</b><br>{", ".join(codigos)}</div>', unsafe_allow_html=True)
-            
-            with col2:
-                st.markdown("### 🟢 Datos Cifrados")
-                if st.session_state.get("codigos_pdfs_encrypted"):
-                    st.markdown(f'<div class="encrypted-text">{st.session_state["codigos_pdfs_encrypted"][:100]}...</div>', unsafe_allow_html=True)
-                    
-                    st.markdown("---")
-                    st.info("💡 **Nota:** Todos los nombres de archivo y códigos extraídos están cifrados en session_state")
-        else:
-            st.info("📂 No se subieron archivos ZIP en esta sesión")
-    
-    # Resumen de seguridad MEJORADO - Incluye verificación de calidad
-    st.markdown("---")
-    st.markdown('<div class="section-header">📊 RESUMEN DE SEGURIDAD COMPLETO</div>', unsafe_allow_html=True)
-    
-    # Calcular total de campos cifrados
-    total_campos_base = len(resultados) + len(informes) + 2  # ficha + informes + objetivo + dispensas
-    
-    # Intentar obtener códigos de verificación si existen
-    try:
-        codigos_ficha_count = len(codigos_ficha) if 'codigos_ficha' in locals() else 0
-        codigos_excel_count = len(codigos_excel) if 'codigos_excel' in locals() else 0
-        codigos_zip_count = len(todos_codigos_zip) if 'todos_codigos_zip' in locals() else 0
-        total_campos = total_campos_base + codigos_ficha_count + codigos_excel_count + codigos_zip_count
-    except:
-        total_campos = total_campos_base
-        codigos_ficha_count = codigos_excel_count = codigos_zip_count = 0
-    
-    col_a, col_b, col_c = st.columns(3)
-    
+    col_a, col_b = st.columns(2)
     with col_a:
-        st.metric("📁 Campos Cifrados", total_campos)
-        st.caption("Incluye operación, informes, objetivo, dispensas y verificación")
+        st.metric("📁 Campos Cifrados", f"{len(resultados) + len(informes) + 2}")
+        st.caption("Operación, informes, objetivo y dispensas")
     
     with col_b:
         st.metric("🔐 Algoritmo", "Fernet")
         st.caption("AES-128-CBC + HMAC-SHA256")
     
-    with col_c:
-        st.metric("📄 Archivos ZIP", f"{len(codigos_pdfs) if codigos_pdfs else 0}")
-        st.caption("Procesados y cifrados")
-    
-    # Detalles adicionales de seguridad
-    col_d1, col_d2 = st.columns(2)
-    with col_d1:
-        st.markdown("**📋 Datos cifrados en Informe de Apoyo:**")
-        st.code(f"• {len(resultados)} campos de operación")
-        st.code(f"• {len(informes)} informes de auditoría")
-        st.code(f"• 1 objetivo general")
-        st.code(f"• 1 sección de dispensas")
-    
-    with col_d2:
-        st.markdown("**🔍 Datos cifrados en Verificación:**")
-        st.code(f"• {codigos_ficha_count} códigos de ficha")
-        st.code(f"• {codigos_excel_count} códigos de Excel")
-        st.code(f"• {codigos_zip_count} códigos de ZIP")
-        st.code(f"• Métricas de comparación")
-    
     st.success("""
     **✅ CONCLUSIÓN DE SEGURIDAD:**
     
-    Todos los datos sensibles extraídos de la Ficha de Finalización de Desembolsos están protegidos mediante cifrado Fernet.
-    - ✅ Datos en reposo (session_state): **CIFRADOS** (incluyendo verificación de calidad)
+    - ✅ Datos en reposo (session_state): **CIFRADOS**
     - ✅ Datos en tránsito: **PROTEGIDOS POR HTTPS**
     - ✅ Clave de cifrado: **ALMACENADA EN SECRETS (no en código)**
     - ✅ Archivos temporales: **ELIMINADOS AUTOMÁTICAMENTE**
-    - ✅ Comparaciones: **SIN ALMACENAMIENTO PERMANENTE**
     """)
 
     # Botones de vista
