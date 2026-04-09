@@ -1,6 +1,8 @@
 import re
 import os
+import io
 import tempfile
+import zipfile
 import streamlit as st
 from pathlib import Path
 
@@ -143,12 +145,13 @@ archivo_excel = st.file_uploader(
     help="Debe contener la hoja 'Consolidado (2019 - 2025)' con columna 'Codigo de documento'"
 )
 
-# ── Upload PDFs adicionales para contraste ────────────────────────────────────
-pdfs_adicionales = st.file_uploader(
-    "📚 PDFs de respaldo para contraste (EED, CCI, etc.)",
-    type=["pdf"],
-    accept_multiple_files=True,
-    help="Selecciona múltiples PDFs para extraer y contrastar códigos"
+# ── Upload ZIP para PDFs ──────────────────────────────────────────────────────
+st.markdown('<div style="margin-top: 20px; font-size: 13.5px; color: #004A8F; font-weight: 600;">📚 Documentación de Respaldo (ZIP)</div>', unsafe_allow_html=True)
+st.caption("Comprime todos tus PDFs de respaldo (EED, CCI, etc.) en un solo archivo .zip para procesamiento rápido.")
+zip_pdfs = st.file_uploader(
+    "Subir carpeta comprimida (.zip)",
+    type=["zip"],
+    help="Sube un archivo .zip que contenga todos los PDFs para contrastar"
 )
 
 # ── Funciones de extracción ────────────────────────────────────────────────────
@@ -193,17 +196,13 @@ def normalizar(t):
     return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn").strip()
 
 def celda_a_html(celda):
-    """Convierte una celda docx a HTML preservando hipervínculos.
-    Tipo 1: w:hyperlink r:id  → links normales
-    Tipo 2: w:fldChar + w:instrText → links SharePoint/campo
-    """
+    """Convierte una celda docx a HTML preservando hipervínculos."""
     from docx.oxml.ns import qn
     import re as _re
 
     partes = []
     for parrafo in celda.paragraphs:
         texto_parrafo = ""
-        # Aplanar todos los elementos del párrafo en una lista
         elems = list(parrafo._p)
         skip_until_end = False
         url_campo = ""
@@ -212,9 +211,7 @@ def celda_a_html(celda):
 
         for elem in elems:
             tag = elem.tag.split("}")[-1]
-
             if tag == "hyperlink":
-                # Tipo 1: w:hyperlink con r:id
                 rId = elem.get(qn("r:id"))
                 url = ""
                 if rId and rId in celda.part.rels:
@@ -227,130 +224,81 @@ def celda_a_html(celda):
                     texto_parrafo += f'<a href="{url}" target="_blank" style="color:#006BB6">{texto_link}</a>'
                 else:
                     texto_parrafo += texto_link
-
             elif tag == "r":
-                # Puede contener fldChar, instrText, o texto normal
                 fld = elem.find(qn("w:fldChar"))
                 instr = elem.find(qn("w:instrText"))
                 t_elem = elem.find(qn("w:t"))
-
                 if fld is not None:
                     ft = fld.get(qn("w:fldCharType"), "")
                     if ft == "begin":
-                        url_campo = ""
-                        texto_campo = ""
-                        in_separate = False
-                        skip_until_end = True
+                        url_campo = ""; texto_campo = ""; in_separate = False; skip_until_end = True
                     elif ft == "separate":
                         in_separate = True
                     elif ft == "end":
-                        # Emitir el link acumulado
                         if url_campo and texto_campo:
                             texto_parrafo += f'<a href="{url_campo}" target="_blank" style="color:#006BB6">{texto_campo}</a>'
                         elif texto_campo:
                             texto_parrafo += texto_campo
-                        skip_until_end = False
-                        in_separate = False
-
+                        skip_until_end = False; in_separate = False
                 elif instr is not None and instr.text:
-                    # Extraer URL de HYPERLINK "url"
                     m = _re.search(r'HYPERLINK\s+"([^"]+)"', instr.text)
-                    if m:
-                        url_campo = m.group(1)
-
+                    if m: url_campo = m.group(1)
                 elif t_elem is not None and t_elem.text:
-                    if in_separate:
-                        texto_campo += t_elem.text
-                    elif not skip_until_end:
-                        texto_parrafo += t_elem.text
-
+                    if in_separate: texto_campo += t_elem.text
+                    elif not skip_until_end: texto_parrafo += t_elem.text
         if texto_parrafo.strip():
             partes.append(texto_parrafo)
     return "<br>".join(partes) if partes else ""
 
 def extraer_presentacion_informes(ruta, extension):
-    """
-    Busca la tabla que contiene tanto "Cumplimiento contractual" como
-    "Presentación de informes". Dentro de esa tabla, empieza a leer
-    solo desde la fila de "Cumplimiento contractual" hacia abajo.
-    Etiquetas aceptadas (match parcial normalizado sin tildes):
-      auditor / auditoria financiera → Última auditoría
-      informe final del prestamo / informe final / final → Final
-      condicion / pendiente / pendientes → Pendientes
-    """
     resultados = {"Última auditoría": "No encontrado", "Final": "No encontrado", "Pendientes": "No encontrado"}
     mapa = [
-        ("ultima auditoria",           "Última auditoría"),
-        ("auditoria financiera",       "Última auditoría"),
-        ("auditor",                    "Última auditoría"),
-        ("informe final del prestamo", "Final"),
-        ("informe final",              "Final"),
-        ("final",                      "Final"),
-        ("condiciones pendientes",     "Pendientes"),
-        ("condicion",                  "Pendientes"),
-        ("pendientes",                 "Pendientes"),
-        ("pendiente",                  "Pendientes"),
+        ("ultima auditoria", "Última auditoría"), ("auditoria financiera", "Última auditoría"),
+        ("auditor", "Última auditoría"), ("informe final del prestamo", "Final"),
+        ("informe final", "Final"), ("final", "Final"), ("condiciones pendientes", "Pendientes"),
+        ("condicion", "Pendientes"), ("pendientes", "Pendientes"), ("pendiente", "Pendientes"),
     ]
-
     try:
         if extension == ".docx":
             from docx import Document
             from docx.table import Table
-
             doc = Document(ruta)
             for elem in doc.element.body:
-                if elem.tag.split("}")[-1] != "tbl":
-                    continue
+                if elem.tag.split("}")[-1] != "tbl": continue
                 tabla = Table(elem, doc)
                 texto_tabla = normalizar(" ".join(c.text for fila in tabla.rows for c in fila.cells))
-
-                # Solo tablas que contengan AMBAS secciones
-                if "presentacion de informes" not in texto_tabla:
-                    continue
-
-                # Encontrar la fila donde está "Cumplimiento contractual"
-                # (o "Presentación de informes" si no hay encabezado de sección)
+                if "presentacion de informes" not in texto_tabla: continue
+                
                 fila_inicio = 0
                 for j, fila in enumerate(tabla.rows):
                     texto_fila = normalizar(" ".join(c.text for c in fila.cells))
                     if "cumplimiento contractual" in texto_fila:
                         fila_inicio = j
                         break
-
-                # Leer filas desde fila_inicio
+                
                 for j, fila in enumerate(tabla.rows):
-                    if j < fila_inicio:
-                        continue
+                    if j < fila_inicio: continue
                     raw = [c.text.strip() for c in fila.cells]
                     seen = set(); celdas = []
                     for c in raw:
-                        if c and c not in seen:
-                            seen.add(c); celdas.append(c)
-                    if len(celdas) < 2:
-                        continue
+                        if c and c not in seen: seen.add(c); celdas.append(c)
+                    if len(celdas) < 2: continue
                     etiqueta_norm = normalizar(celdas[-2])
                     valor_texto = celdas[-1].strip()
-                    # Ignorar placeholders vacíos o guiones
-                    if not valor_texto or valor_texto in ("-", "—"):
-                        continue
-                    # Buscar la celda real de contenido — última celda única (no repetida)
-                    seen_ids = set()
-                    celdas_unicas = []
+                    if not valor_texto or valor_texto in ("-", "—"): continue
+                    
+                    seen_ids = set(); celdas_unicas = []
                     for c in fila.cells:
                         cid = id(c._tc)
-                        if cid not in seen_ids:
-                            seen_ids.add(cid)
-                            celdas_unicas.append(c)
-                    # La celda de valor es la última única
+                        if cid not in seen_ids: seen_ids.add(cid); celdas_unicas.append(c)
+                    
                     celda_contenido = celdas_unicas[-1] if len(celdas_unicas) >= 2 else None
                     valor_html = celda_a_html(celda_contenido) if celda_contenido else ""
-                    # Usar HTML si tiene contenido; si no, usar texto plano
                     valor = valor_html.strip() or valor_texto
                     for clave, nombre in mapa:
                         if clave in etiqueta_norm and resultados[nombre] == "No encontrado":
                             resultados[nombre] = valor
                             break
-
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
@@ -361,17 +309,11 @@ def extraer_presentacion_informes(ruta, extension):
                 m = re.search(rf"{re.escape(clave)}[^\n]*\n([^\n]+)", texto, re.IGNORECASE)
                 if m and resultados[nombre] == "No encontrado":
                     resultados[nombre] = m.group(1).strip()
-
     except Exception as e:
-        for k in resultados:
-            resultados[k] = f"Error: {e}"
+        for k in resultados: resultados[k] = f"Error: {e}"
     return resultados
 
 def extraer_objetivo_general(ruta, extension):
-    """
-    Busca la fila 'Objetivo general y específicos' y extrae
-    el párrafo que sigue a 'Objetivo General:' dentro de esa celda.
-    """
     try:
         if extension == ".docx":
             from docx import Document
@@ -380,55 +322,31 @@ def extraer_objetivo_general(ruta, extension):
                 for fila in tabla.rows:
                     celdas_raw = [c.text.strip() for c in fila.cells]
                     celdas = list(dict.fromkeys(celdas_raw))
-                    if len(celdas) < 2:
-                        continue
-                    if "objetivo general" not in celdas[0].lower():
-                        continue
-                    # Texto completo de la celda valor (última celda)
+                    if len(celdas) < 2: continue
+                    if "objetivo general" not in celdas[0].lower(): continue
                     celda_valor = fila.cells[-1].text
-                    # Buscar el párrafo después de "Objetivo General:"
-                    m = re.search(
-                        r"Objetivo General[:\s]*\n+([\s\S]+?)(?:\n\s*\n|\nObjetivos Espec|$)",
-                        celda_valor, re.IGNORECASE
-                    )
-                    if m:
-                        return " ".join(m.group(1).split())  # limpiar saltos internos
-                    # Si no hay etiqueta, devolver todo el contenido
-                    if celda_valor.strip() and celda_valor.strip() not in ("-", "—"):
-                        return celda_valor.strip()
+                    m = re.search(r"Objetivo General[:\s]*\n+([\s\S]+?)(?:\n\s*\n|\nObjetivos Espec|$)", celda_valor, re.IGNORECASE)
+                    if m: return " ".join(m.group(1).split())
+                    if celda_valor.strip() and celda_valor.strip() not in ("-", "—"): return celda_valor.strip()
         else:
             import pdfplumber
             with pdfplumber.open(ruta) as pdf:
                 texto = "\n".join(p.extract_text() or "" for p in pdf.pages)
             m = re.search(r"Objetivo General[:\s]*\n+([\s\S]+?)(?:\n\s*\n|Objetivos Espec)", texto, re.IGNORECASE)
-            if m:
-                return " ".join(m.group(1).split())
-    except Exception:
-        pass
+            if m: return " ".join(m.group(1).split())
+    except Exception: pass
     return "No encontrado"
 
 def celda_dispensas_a_html(celda):
-    """Convierte la celda de Dispensas y enmiendas a HTML,
-    preservando párrafos, tabla interna y lista numerada."""
     from docx.oxml.ns import qn
     html = ""
-
-    # Recorrer elementos en orden (párrafos y tablas internas)
     for elem in celda._tc:
         tag = elem.tag.split("}")[-1]
-
         if tag == "p":
-            # Párrafo — extraer texto
-            texto = "".join(
-                n.text for n in elem.iter(qn("w:t")) if n.text
-            ).strip()
-            if texto:
-                html += f'<p style="margin:6px 0">{texto}</p>'
-
+            texto = "".join(n.text for n in elem.iter(qn("w:t")) if n.text).strip()
+            if texto: html += f'<p style="margin:6px 0">{texto}</p>'
         elif tag == "tbl":
-            # Tabla interna — renderizar como tabla HTML
             from docx.table import Table
-            from docx.api import Document as _Doc
             tabla_interna = Table(elem, celda._tc)
             html += '<table style="border-collapse:collapse;width:100%;margin:10px 0">'
             for i, fila in enumerate(tabla_interna.rows):
@@ -438,53 +356,13 @@ def celda_dispensas_a_html(celda):
                 es_header = i == 0
                 html += "<tr>"
                 for c in celdas:
-                    if es_header:
-                        html += f'<th style="background:#004A8F;color:white;padding:6px 10px;font-size:12px;text-align:left">{c}</th>'
-                    else:
-                        html += f'<td style="background:{bg};padding:6px 10px;font-size:12px;border-bottom:1px solid #dce6f0">{c}</td>'
+                    if es_header: html += f'<th style="background:#004A8F;color:white;padding:6px 10px;font-size:12px;text-align:left">{c}</th>'
+                    else: html += f'<td style="background:{bg};padding:6px 10px;font-size:12px;border-bottom:1px solid #dce6f0">{c}</td>'
                 html += "</tr>"
             html += "</table>"
-
     return html if html.strip() else None
 
-def extraer_total_dispensas(ruta, extension):
-    """Extrae el número de la fila Total de la tabla anidada en Dispensas y enmiendas."""
-    try:
-        if extension == ".docx":
-            from docx import Document
-            doc = Document(ruta)
-            for tabla in doc.tables:
-                for fila in tabla.rows:
-                    # Buscar fila que tenga "dispensas" en alguna celda
-                    texto_fila = " ".join(c.text.strip() for c in fila.cells).lower()
-                    if "dispensa" not in texto_fila and "enmienda" not in texto_fila:
-                        continue
-                    # Recorrer todas las celdas únicas de esta fila
-                    seen = set(); unicas = []
-                    for c in fila.cells:
-                        cid = id(c._tc)
-                        if cid not in seen:
-                            seen.add(cid); unicas.append(c)
-                    # Buscar tabla interna en CUALQUIER celda de la fila
-                    for celda in unicas:
-                        for tabla_interna in celda.tables:
-                            for fila_int in tabla_interna.rows:
-                                celdas_int = list(dict.fromkeys(
-                                    c.text.strip() for c in fila_int.cells
-                                ))
-                                # Fila que tenga solo "Total" o "*Total*" en primera celda
-                                if celdas_int and "total" in celdas_int[0].lower():
-                                    # Tomar último valor numérico de la fila
-                                    for v in reversed(celdas_int):
-                                        v_clean = v.strip().replace(".", "").replace(",", "")
-                                        if v_clean.isdigit():
-                                            return int(v_clean)
-    except Exception:
-        pass
-    return None
-
 def extraer_dispensas(ruta, extension):
-    """Extrae el contenido completo de 'Dispensas y enmiendas' como HTML."""
     try:
         if extension == ".docx":
             from docx import Document
@@ -494,17 +372,13 @@ def extraer_dispensas(ruta, extension):
                     seen = set(); unicas = []
                     for c in fila.cells:
                         cid = id(c._tc)
-                        if cid not in seen:
-                            seen.add(cid); unicas.append(c)
-                    if len(unicas) < 2:
-                        continue
+                        if cid not in seen: seen.add(cid); unicas.append(c)
+                    if len(unicas) < 2: continue
                     etiqueta = unicas[0].text.strip().lower()
-                    if "dispensa" not in etiqueta and "enmienda" not in etiqueta:
-                        continue
+                    if "dispensa" not in etiqueta and "enmienda" not in etiqueta: continue
                     celda = unicas[-1]
                     valor_texto = celda.text.strip()
-                    if not valor_texto or valor_texto in ("-", "—"):
-                        continue
+                    if not valor_texto or valor_texto in ("-", "—"): continue
                     html = celda_dispensas_a_html(celda)
                     return html if html else valor_texto
         else:
@@ -515,30 +389,40 @@ def extraer_dispensas(ruta, extension):
             if m:
                 parrafos = [p.strip() for p in m.group(1).splitlines() if p.strip()]
                 return "<br>".join(parrafos)
-    except Exception:
-        pass
+    except Exception: pass
     return "No encontrado"
 
-def extraer_codigos_de_pdfs(pdfs):
-    """Extrae códigos EED/CCI/GOI/STCI de múltiples PDFs"""
-    import pdfplumber, re, tempfile, os
-    
+def extraer_codigos_de_zip(file_zip):
+    """
+    Extrae códigos EED/CCI/GOI/STCI de un archivo ZIP.
+    Usa pypdf que es mucho más rápido para extracción de texto plano.
+    """
+    import pypdf # Importamos esta librería optimizada
     codigos_encontrados = {}
-    for pdf in pdfs:
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                tmp.write(pdf.read())
-                ruta_tmp = tmp.name
-            texto = ""
-            with pdfplumber.open(ruta_tmp) as f:
-                for p in f.pages:
-                    t = p.extract_text()
-                    if t: texto += t + "\n"
-            codigos = set(re.findall(r'((?:EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)', texto, re.I))
-            codigos_encontrados[pdf.name] = sorted(list(codigos))
-            os.unlink(ruta_tmp)
-        except Exception as e:
-            codigos_encontrados[pdf.name] = f"Error: {e}"
+    
+    try:
+        with zipfile.ZipFile(file_zip, 'r') as zf:
+            # Filtrar solo PDFs
+            pdf_files = [f for f in zf.namelist() if f.lower().endswith('.pdf')]
+            
+            for nombre_archivo in pdf_files:
+                try:
+                    # Leer el contenido del archivo zip a un buffer
+                    with zf.open(nombre_archivo) as f:
+                        reader = pypdf.PdfReader(f)
+                        texto_completo = ""
+                        # Leemos todas las páginas
+                        for page in reader.pages:
+                            texto_completo += page.extract_text() + "\n"
+                    
+                    # Buscar códigos
+                    codigos = set(re.findall(r'((?:EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)', texto_completo, re.I))
+                    codigos_encontrados[nombre_archivo] = sorted(list(codigos))
+                except Exception as e:
+                    codigos_encontrados[nombre_archivo] = f"Error lectura: {str(e)}"
+    except Exception as e:
+        st.error(f"Error al descomprimir o leer el ZIP: {e}")
+        
     return codigos_encontrados
 
 def tabla_html(filas):
@@ -547,14 +431,9 @@ def tabla_html(filas):
         rows += f"<tr><td>{label}</td><td>{valor or '—'}</td></tr>"
     return f'<table class="caf-table">{rows}</table>'
 
-# ── Limpiar resultados si no hay archivo ─────────────────────────────────────
-if archivo is None and "resultados" in st.session_state:
-    for k in ["resultados","informes","objetivo","dispensas","vista"]:
-        st.session_state.pop(k, None)
-
 # ── Limpiar si no hay archivo ─────────────────────────────────────────────────
 if archivo is None:
-    for k in ["resultados", "informes", "objetivo", "dispensas", "vista", "codigos_pdfs"]:
+    for k in ["resultados", "informes", "objetivo", "dispensas", "vista", "codigos_pdfs", "total_pdfs"]:
         st.session_state.pop(k, None)
 
 # ── Procesamiento ──────────────────────────────────────────────────────────────
@@ -573,19 +452,22 @@ if procesar:
             informes  = extraer_presentacion_informes(ruta_tmp, extension)
             objetivo  = extraer_objetivo_general(ruta_tmp, extension)
             dispensas        = extraer_dispensas(ruta_tmp, extension)
-            # Extraer total del HTML — busca ">Total</td><td...>NÚMERO"
+            # Extraer total del HTML
             _m = re.search(r">Total</td>\s*<td[^>]*>\s*(\d+)", dispensas, re.IGNORECASE)
             total_dispensas = int(_m.group(1)) if _m else None
             
-            # Procesar PDFs adicionales si existen
+            # Procesar ZIP si existe
             codigos_pdfs = {}
-            if pdfs_adicionales:
-                with st.spinner("Analizando PDFs adicionales..."):
-                    codigos_pdfs = extraer_codigos_de_pdfs(pdfs_adicionales)
+            total_pdfs = 0
+            if zip_pdfs:
+                with st.spinner("Extrayendo códigos del ZIP (optimizado)..."):
+                    codigos_pdfs = extraer_codigos_de_zip(zip_pdfs)
+                    # Contar cuántos archivos procesados exitosamente
+                    total_pdfs = len([c for c in codigos_pdfs.values() if isinstance(c, list)])
 
         os.unlink(ruta_tmp)
 
-        # Guardar todo en session_state para persistir entre reruns
+        # Guardar todo en session_state
         st.session_state["resultados"] = {
             "N° de Operación (CFA)":            buscar_campo(texto, r"CFA\s*[–\-]\s*([\d]+(?:/[\d]+)*)"),
             "Nombre de la Operación":           buscar_campo(texto, r"Nombre de la operaci[oó]n"                  + SEP + r"([^|\n]+)"),
@@ -602,13 +484,13 @@ if procesar:
         }
         st.session_state["informes"]  = informes
         st.session_state["objetivo"]  = objetivo
-        # total_dispensas ya fue extraído directamente de la tabla interna del docx
         st.session_state["dispensas"]       = dispensas
         st.session_state["total_dispensas"] = total_dispensas
         st.session_state["codigos_pdfs"] = codigos_pdfs
+        st.session_state["total_pdfs"] = total_pdfs
         st.session_state["vista"]     = "informe"
 
-# ── Renderizado (siempre visible si hay datos en session_state) ────────────────
+# ── Renderizado ────────────────────────────────────────────────────────────────
 if "resultados" in st.session_state:
     resultados = st.session_state["resultados"]
     informes   = st.session_state["informes"]
@@ -616,6 +498,7 @@ if "resultados" in st.session_state:
     dispensas       = st.session_state["dispensas"]
     total_dispensas = st.session_state.get("total_dispensas")
     codigos_pdfs = st.session_state.get("codigos_pdfs", {})
+    total_pdfs = st.session_state.get("total_pdfs", 0)
 
     # Botones de vista
     st.write("")
@@ -646,7 +529,7 @@ if "resultados" in st.session_state:
         ]), unsafe_allow_html=True)
 
     elif vista == "calidad":
-        # Resaltar siglas de documentos (EED, CCI, GOI, STCI) + guion o espacio + número
+        # Resaltar siglas
         dispensas_html = re.sub(
             r'((EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)',
             r'<span style="color:#006BB6;font-weight:700">\1</span>',
@@ -663,122 +546,102 @@ if "resultados" in st.session_state:
 
                 df = pd.read_excel(archivo_excel, sheet_name="Consolidado (2019 - 2025)")
 
-                # Buscar columnas necesarias (tolerante a variaciones)
-                col_codigo = next(
-                    (c for c in df.columns if "codigo" in c.lower() and "doc" in c.lower()), None
-                )
-                col_operacion = next(
-                    (c for c in df.columns if "operaci" in c.lower() and "n" in c.lower()), None
-                )
-                if col_codigo is None:
-                    st.warning("⚠️ No se encontró la columna 'Codigo de documento' en el Excel.")
-                elif col_operacion is None:
-                    st.warning("⚠️ No se encontró la columna 'Número de la operación' en el Excel.")
+                col_codigo = next((c for c in df.columns if "codigo" in c.lower() and "doc" in c.lower()), None)
+                col_operacion = next((c for c in df.columns if "operaci" in c.lower() and "n" in c.lower()), None)
+                
+                if col_codigo is None: st.warning("⚠️ No se encontró la columna 'Codigo de documento' en el Excel.")
+                elif col_operacion is None: st.warning("⚠️ No se encontró la columna 'Número de la operación' en el Excel.")
                 else:
-                    # Obtener CFA de la ficha — separar números individuales
                     cfa_raw = resultados.get("N° de Operación (CFA)", "")
                     numeros_cfa = [n.strip() for n in cfa_raw.split("/") if n.strip()]
 
-                    # Filtrar: la celda debe contener TODOS los números del CFA
-                    # (cubre orden inverso: "8261/8262" == "8262/8261")
                     col_op_upper = df[col_operacion].astype(str).str.upper()
                     if len(numeros_cfa) == 1:
-                        # Acepta CFA11724 y CFA011724 (con 0 delante)
                         mask = col_op_upper.str.contains(f"CFA0*{numeros_cfa[0]}\\b", na=False, regex=True)
                     else:
-                        mask = col_op_upper.apply(
-                            lambda v: all(n in v for n in numeros_cfa)
-                        )
-                    df_filtrado = df[mask]
-
-                    if df_filtrado.empty:
-                        st.warning(f"⚠️ No se encontraron filas para CFA{cfa_raw} en la columna '{col_operacion}'.")
-                        total_excel = 0
-                    else:
-                        # Contar códigos distintos no vacíos para ese CFA
-                        total_excel = df_filtrado[col_codigo].dropna().nunique()
-
-                    total_ficha = total_dispensas
-
-                    # Mostrar métricas y resultado
-                    col_a, col_b, col_c = st.columns(3)
-                    with col_a:
-                        st.metric("Total en Ficha (docx)", total_ficha if total_ficha is not None else "No encontrado")
-                    with col_b:
-                        st.metric("Total en Base Excel", total_excel)
-                    with col_c:
-                        st.metric("PDFs analizados", len(pdfs_adicionales) if pdfs_adicionales else 0)
+                        mask = col_op_upper.apply(lambda v: all(n in v for n in numeros_cfa))
                     
-                    if total_ficha is not None:
-                        if total_ficha == total_excel:
+                    df_filtrado = df[mask]
+                    total_excel = df_filtrado[col_codigo].dropna().nunique() if not df_filtrado.empty else 0
+                    
+                    codigos_ficha = sorted(set(re.findall(r'((?:EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)', dispensas, re.IGNORECASE)))
+                    
+                    # Códigos del ZIP
+                    todos_codigos_zip = set()
+                    for cods in codigos_pdfs.values():
+                        if isinstance(cods, list): todos_codigos_zip.update(cods)
+                    todos_codigos_zip = sorted(list(todos_codigos_zip))
+                    
+                    codigos_excel = sorted(df_filtrado[col_codigo].dropna().unique().tolist()) if not df_filtrado.empty else []
+                    
+                    # Análisis de coincidencias
+                    set_ficha = set(codigos_ficha)
+                    set_excel = set(codigos_excel)
+                    set_zip = set(todos_codigos_zip)
+                    
+                    solo_ficha = set_ficha - set_excel - set_zip
+                    solo_excel = set_excel - set_ficha - set_zip
+                    solo_zip = set_zip - set_ficha - set_excel
+                    
+                    # Mostrar métricas
+                    col_a, col_b, col_c = st.columns(3)
+                    with col_a: st.metric("Total en Ficha", total_dispensas if total_dispensas is not None else "No encontrado")
+                    with col_b: st.metric("Total en Excel", total_excel)
+                    with col_c: st.metric("Archivos en ZIP", total_pdfs)
+                    
+                    if total_dispensas is not None:
+                        if total_dispensas == total_excel:
                             st.markdown('<div style="background:#E8F5E9;border-left:5px solid #43A047;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:14px;color:#1b5e20;font-weight:700">✅ Coinciden</div>', unsafe_allow_html=True)
                         else:
-                            st.markdown('<div style="background:#FFF8E1;border-left:5px solid #F5A623;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:13px;color:#5a3e00;font-weight:700">⚠️ La cantidad de EED en la Ficha de Finalización de Desembolsos y la Base de Datos DRS no coincide</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background:#FFF8E1;border-left:5px solid #F5A623;border-radius:6px;padding:14px 18px;margin-top:8px;font-size:13px;color:#5a3e00;font-weight:700">⚠️ La cantidad de EED en la Ficha y la Base de Datos no coincide</div>', unsafe_allow_html=True)
 
-                    # ── Tablas comparativas ───────────────────────────────────
+                    # Tablas comparativas
                     st.write("")
                     col_t1, col_t2 = st.columns(2)
 
-                    # Tabla 1: códigos encontrados en la ficha
-                    codigos_ficha = sorted(set(re.findall(
-                        r'((?:EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)',
-                        dispensas, re.IGNORECASE
-                    )))
                     with col_t1:
-                        st.markdown('**📄 Códigos en la Ficha (docx)**')
+                        st.markdown('**📄 Códigos en Ficha**')
                         if codigos_ficha:
-                            ficha_html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
-                            ficha_html += '<tr><th style="background:#004A8F;color:white;padding:7px 12px;text-align:left">Código</th></tr>'
+                            html = '<table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th style="background:#004A8F;color:white;padding:7px 12px;text-align:left">Código</th></tr>'
                             for i, cod in enumerate(codigos_ficha):
                                 bg = "#EEF3F9" if i % 2 == 0 else "#ffffff"
-                                ficha_html += f'<tr><td style="background:{bg};padding:7px 12px;border-bottom:1px solid #dce6f0;color:#006BB6;font-weight:700">{cod}</td></tr>'
-                            ficha_html += '</table>'
-                            st.markdown(ficha_html, unsafe_allow_html=True)
-                        else:
-                            st.info("No se encontraron códigos.")
+                                html += f'<tr><td style="background:{bg};padding:7px 12px;border-bottom:1px solid #dce6f0;color:#006BB6;font-weight:700">{cod}</td></tr>'
+                            html += '</table>'
+                            st.markdown(html, unsafe_allow_html=True)
+                        else: st.info("No se encontraron códigos.")
 
-                    # Tabla 2: códigos encontrados en la base Excel
                     with col_t2:
-                        st.markdown('**📊 Códigos en la Base Excel**')
-                        if not df_filtrado.empty:
-                            codigos_excel = sorted(df_filtrado[col_codigo].dropna().unique().tolist())
-                            excel_html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
-                            excel_html += '<tr><th style="background:#004A8F;color:white;padding:7px 12px;text-align:left">Código</th></tr>'
+                        st.markdown('**📊 Códigos en Excel**')
+                        if codigos_excel:
+                            html = '<table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th style="background:#004A8F;color:white;padding:7px 12px;text-align:left">Código</th></tr>'
                             for i, cod in enumerate(codigos_excel):
                                 bg = "#EEF3F9" if i % 2 == 0 else "#ffffff"
-                                excel_html += f'<tr><td style="background:{bg};padding:7px 12px;border-bottom:1px solid #dce6f0;color:#006BB6;font-weight:700">{cod}</td></tr>'
-                            excel_html += '</table>'
-                            st.markdown(excel_html, unsafe_allow_html=True)
-                        else:
-                            st.info("No se encontraron registros en el Excel.")
-                    
-                    # ── Códigos extraídos de PDFs adicionales ─────────────────
+                                html += f'<tr><td style="background:{bg};padding:7px 12px;border-bottom:1px solid #dce6f0;color:#006BB6;font-weight:700">{cod}</td></tr>'
+                            html += '</table>'
+                            st.markdown(html, unsafe_allow_html=True)
+                        else: st.info("No se encontraron registros.")
+
+                    # Sección ZIP
                     if codigos_pdfs:
                         st.write("")
-                        st.markdown('<div class="section-header">📑 &nbsp;Códigos en PDFs subidos</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="section-header">📑 &nbsp;Códigos en ZIP (PDFs)</div>', unsafe_allow_html=True)
                         
-                        # Unir todos los códigos de todos los PDFs
-                        todos_codigos = set()
-                        for cods in codigos_pdfs.values():
-                            if isinstance(cods, list):
-                                todos_codigos.update(cods)
-                        
-                        if todos_codigos:
-                            col_p1, col_p2 = st.columns(2)
-                            with col_p1:
-                                st.markdown('**Códigos únicos encontrados:**')
-                                for cod in sorted(todos_codigos):
-                                    st.markdown(f'<span style="background:#EEF3F9;padding:4px 10px;border-radius:4px;margin:2px;display:inline-block;font-size:12.5px;color:#004A8F;font-weight:600">{cod}</span>', unsafe_allow_html=True)
+                        if todos_codigos_zip:
+                            # Mostrar total encontrados en el zip
+                            col_z1, col_z2 = st.columns([1, 2])
+                            with col_z1:
+                                st.markdown(f'<div style="background:#EEF3F9;padding:15px;border-radius:8px;text-align:center"><div style="font-size:24px;font-weight:800;color:#004A8F">{len(todos_codigos_zip)}</div><div style="font-size:12px;text-transform:uppercase">Total únicos</div></div>', unsafe_allow_html=True)
                             
-                            with col_p2:
+                            with col_z2:
                                 st.markdown('**Por archivo:**')
+                                # Agrupar visualmente si hay muchos
                                 for nombre, cods in codigos_pdfs.items():
                                     if isinstance(cods, list) and cods:
-                                        st.markdown(f'📄 {nombre}<br><small style="color:#666">{", ".join(cods)}</small>', unsafe_allow_html=True)
-                                    elif isinstance(cods, str):
-                                        st.markdown(f'📄 {nombre} <small style="color:#c62828">({cods})</small>', unsafe_allow_html=True)
+                                        # Icono zip + nombre corto
+                                        display_name = nombre.split('/')[-1]
+                                        st.markdown(f'<div style="display:inline-block;background:#fff;padding:6px 10px;margin:2px;border-radius:4px;border:1px solid #dce6f0;font-size:11px">📄 <b>{display_name}</b> ({len(cods)} found)</div>', unsafe_allow_html=True)
                         else:
-                            st.info("No se encontraron códigos (EED/CCI/GOI/STCI) en los PDFs subidos.")
+                            st.info("No se encontraron códigos (EED/CCI/GOI/STCI) en el ZIP.")
 
             except Exception as e:
                 st.error(f"Error al leer el Excel: {e}")
