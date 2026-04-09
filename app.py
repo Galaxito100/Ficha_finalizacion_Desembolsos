@@ -227,13 +227,6 @@ div.stButton > button:hover {
     margin: 5px 0;
     box-shadow: 0 2px 8px rgba(40,167,69,0.3);
 }
-.demo-box {
-    background: white;
-    border: 2px solid #004A8F;
-    border-radius: 8px;
-    padding: 15px;
-    margin: 10px 0;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -614,7 +607,7 @@ else:
 if resultados:
     total_dispensas = st.session_state.get("total_dispensas")
 
-    # ── DEMOSTRACIÓN DE CIFRADO ────────────────────────────────────────────────
+    # ── DEMOSTRACIÓN DE CIFRADO (SIN RECTÁNGULOS VACÍOS) ──────────────────────
     st.markdown("---")
     st.markdown('<div class="section-header">🔐 DEMOSTRACIÓN DE SEGURIDAD - CIFRADO EN TIEMPO REAL</div>', unsafe_allow_html=True)
     
@@ -628,88 +621,68 @@ if resultados:
     </div>
     """, unsafe_allow_html=True)
     
+    # Tabla comparativa simple
+    st.markdown("### 📊 Comparación: Dato Visible vs Dato Cifrado")
+    
     # Ejemplo 1: Número de Operación
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
         st.markdown("**📄 DATO VISIBLE (Usuario)**")
-        st.markdown("Así lo ves tú en pantalla:")
         st.markdown(f'<div class="decrypted-text"><b>N° Operación:</b><br>{resultados.get("N° de Operación (CFA)", "N/A")}</div>', unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
     
     with col2:
-        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
         st.markdown("**🔐 DATO CIFRADO (Session State)**")
-        st.markdown("Así está almacenado en memoria:")
-        
-        # Obtener el dato cifrado completo
         if st.session_state.get("resultados_encrypted"):
             datos_encrypted = st.session_state["resultados_encrypted"]
-            # Mostrar solo los primeros 80 caracteres
-            st.markdown(f'<div class="encrypted-text"><b>Blob cifrado:</b><br>{datos_encrypted[:80]}...</div>', unsafe_allow_html=True)
-            st.caption("*Cifrado completo en session_state*")
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown(f'<div class="encrypted-text"><b>Blob cifrado:</b><br>{datos_encrypted[:60]}...</div>', unsafe_allow_html=True)
     
     # Ejemplo 2: Monto del préstamo
     col3, col4 = st.columns(2)
     
     with col3:
-        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
         st.markdown("**💰 DATO VISIBLE (Usuario)**")
         st.markdown(f'<div class="decrypted-text"><b>Monto Aprobado:</b><br>{resultados.get("Monto préstamo CAF (Aprobado)", "N/A")}</div>', unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
     
     with col4:
-        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
         st.markdown("**🔐 DATO CIFRADO (Session State)**")
         st.markdown(f'<div class="encrypted-text"><b>Monto:</b><br>[CIFRADO - Imposible de leer sin clave]</div>', unsafe_allow_html=True)
-        st.caption("*Incluso si alguien accede a la memoria, no puede leerlo*")
-        st.markdown("</div>", unsafe_allow_html=True)
     
-    # Ejemplo 3: Dispensas
+    # Ejemplo 3: Dispensas (texto largo)
     col5, col6 = st.columns(2)
     
     with col5:
-        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
         st.markdown("**📋 DATO VISIBLE (Usuario)**")
         import re as re_clean
-        dispensas_preview = re_clean.sub(r'<[^>]+>', '', dispensas)[:150]
+        dispensas_preview = re_clean.sub(r'<[^>]+>', '', dispensas)[:100]
         st.markdown(f'<div class="decrypted-text"><b>Dispensas:</b><br>{dispensas_preview}...</div>', unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
     
     with col6:
-        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
         st.markdown("**🔐 DATO CIFRADO (Session State)**")
         if st.session_state.get("dispensas_encrypted"):
-            st.markdown(f'<div class="encrypted-text">{st.session_state["dispensas_encrypted"][:80]}...</div>', unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown(f'<div class="encrypted-text">{st.session_state["dispensas_encrypted"][:60]}...</div>', unsafe_allow_html=True)
 
-    # Resumen de seguridad MEJORADO
+    # ── RESUMEN DE SEGURIDAD MEJORADO ─────────────────────────────────────────
     st.markdown("---")
     st.markdown('<div class="section-header">📊 RESUMEN DE SEGURIDAD COMPLETO</div>', unsafe_allow_html=True)
     
-    # Calcular totales incluyendo verificación
-    total_campos_base = len(resultados) + len(informes) + 2
+    # Calcular totales incluyendo verificación de dispensas
+    total_campos_ficha = len(resultados) + len(informes) + 2  # ficha + informes + objetivo + dispensas
     
-    # Intentar obtener datos de verificación si existen
-    try:
-        # En la vista de calidad, estos datos existen
-        codigos_ficha_count = len(codigos_ficha) if 'codigos_ficha' in locals() else 0
-        codigos_excel_count = len(codigos_excel) if 'codigos_excel' in locals() else 0
-        codigos_zip_count = len(todos_codigos_zip) if 'todos_codigos_zip' in locals() else 0
-        total_verificacion = codigos_ficha_count + codigos_excel_count + codigos_zip_count
-    except:
-        total_verificacion = 0
-        codigos_ficha_count = codigos_excel_count = codigos_zip_count = 0
+    # Contar códigos en dispensas (verificación de calidad)
+    codigos_en_dispensas = len(set(re.findall(r'((?:EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)', dispensas, re.IGNORECASE)))
     
-    total_general = total_campos_base + total_verificacion
+    # Contar códigos en ZIP
+    codigos_en_zip = len(set([cod for cods in codigos_pdfs.values() if isinstance(cods, list) for cod in cods]))
+    
+    total_verificacion = codigos_en_dispensas + codigos_en_zip
+    total_general = total_campos_ficha + total_verificacion
     
     col_a, col_b, col_c = st.columns(3)
     
     with col_a:
         st.metric("📁 Total Campos Cifrados", total_general)
-        st.caption(f"{total_campos_base} ficha + {total_verificacion} verificación")
+        st.caption(f"{total_campos_ficha} ficha + {total_verificacion} verificación")
     
     with col_b:
         st.metric("🔐 Algoritmo", "Fernet")
@@ -731,9 +704,8 @@ if resultados:
     
     with col_d2:
         st.markdown("**🔍 Verificación de Calidad (CIFRADO):**")
-        st.code(f"• {codigos_ficha_count} códigos de ficha")
-        st.code(f"• {codigos_excel_count} códigos de Excel")
-        st.code(f"• {codigos_zip_count} códigos de ZIP")
+        st.code(f"• {codigos_en_dispensas} códigos en dispensas")
+        st.code(f"• {codigos_en_zip} códigos en ZIPs")
         st.code(f"• Métricas de comparación")
     
     st.success("""
@@ -798,11 +770,15 @@ if resultados:
                     cfa_raw = resultados.get("N° de Operación (CFA)", "")
                     numeros_cfa = [n.strip() for n in cfa_raw.split("/") if n.strip()]
 
+                    # FIX: Convertir todo a string antes de comparar
                     col_op_upper = df[col_operacion].astype(str).str.upper()
                     if len(numeros_cfa) == 1:
                         mask = col_op_upper.str.contains(f"CFA0*{numeros_cfa[0]}\\b", na=False, regex=True)
                     else:
-                        mask = col_op_upper.apply(lambda v: all(n in v for n in numeros_cfa))
+                        # FIX: Asegurar que todo sea string
+                        mask = col_op_upper.apply(
+                            lambda v: all(str(n) in str(v) for n in numeros_cfa)
+                        )
                     
                     df_filtrado = df[mask]
                     total_excel = df_filtrado[col_codigo].dropna().nunique() if not df_filtrado.empty else 0
