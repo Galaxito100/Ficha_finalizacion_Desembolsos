@@ -4,3 +4,4 @@ pdfplumber
 openpyxl
 pandas
 cryptography==42.0.0
+pypdf
