@@ -3,3 +3,4 @@ python-docx
 pdfplumber
 openpyxl
 pandas
+cryptography==42.0.0
