@@ -22,7 +22,6 @@ class SecureData:
     """Cifra y descifra datos sensibles de la aplicación"""
     
     def __init__(self):
-        """Inicializa el cifrador con la clave de secrets.toml"""
         try:
             clave_raw = st.secrets["security"]["encryption_key"]
             
@@ -43,7 +42,6 @@ class SecureData:
             self.disponible = False
     
     def cifrar_datos(self, datos):
-        """Cifra un diccionario completo"""
         if not self.disponible:
             return datos
         try:
@@ -55,7 +53,6 @@ class SecureData:
             return None
     
     def descifrar_datos(self, datos_cifrados):
-        """Descifra datos previamente cifrados"""
         if not self.disponible:
             return datos_cifrados
         if not datos_cifrados:
@@ -68,7 +65,6 @@ class SecureData:
             return None
     
     def cifrar_texto(self, texto):
-        """Cifra un texto simple"""
         if not self.disponible or not texto:
             return texto
         try:
@@ -78,7 +74,6 @@ class SecureData:
             return texto
     
     def descifrar_texto(self, texto_cifrado):
-        """Descifra un texto simple"""
         if not self.disponible or not texto_cifrado:
             return texto_cifrado
         try:
@@ -536,7 +531,8 @@ def tabla_html(filas):
 # ── Limpiar si no hay archivo ─────────────────────────────────────────────────
 if archivo is None:
     for k in ["resultados_encrypted", "informes_encrypted", "objetivo_encrypted", 
-              "dispensas_encrypted", "vista", "codigos_pdfs_encrypted", "total_dispensas"]:
+              "dispensas_encrypted", "vista", "codigos_pdfs_encrypted", "total_dispensas",
+              "excel_datos_encrypted", "comparacion_encrypted"]:
         st.session_state.pop(k, None)
 
 # ── Procesamiento ──────────────────────────────────────────────────────────────
@@ -649,16 +645,13 @@ if resultados:
             st.markdown("### 🟢 Datos Cifrados (En memoria)")
             st.markdown("Así se ven los datos almacenados en session_state:")
             
-            # Obtener datos cifrados y mostrar cada campo
             if st.session_state.get("resultados_encrypted"):
                 datos_cifrados = st.session_state["resultados_encrypted"]
-                # Mostrar el blob cifrado completo (primeros 100 chars)
                 st.markdown(f'<div class="encrypted-text"><b>Blob cifrado completo:</b><br>{datos_cifrados[:100]}...</div>', unsafe_allow_html=True)
                 
                 st.markdown("---")
                 st.markdown("**Cada campo individual está cifrado dentro del JSON:**")
                 
-                # Mostrar que cada campo está protegido
                 for key in resultados.keys():
                     st.markdown(f'<div class="encrypted-text"><b>{key}:</b><br>[CIFRADO]</div>', unsafe_allow_html=True)
     
@@ -698,7 +691,6 @@ if resultados:
         
         with col3:
             st.markdown("### 🔴 Dispensas (Claro)")
-            # Limpiar HTML para mostrar texto plano
             import re as re_clean
             dispensas_limpio = re_clean.sub(r'<[^>]+>', '', dispensas)[:300]
             st.markdown(f'<div class="decrypted-text">{dispensas_limpio}{"..." if len(dispensas) > 300 else ""}</div>', unsafe_allow_html=True)
@@ -887,4 +879,3 @@ if resultados:
             st.info("📂 Sube la base de EED (.xlsx) para comparar el total de dispensas.")
 
     st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos - 🔐 Datos Cifrados</div>', unsafe_allow_html=True)
-st.warning("⚠️ Parece que no hay datos cifrados o el cifrado falló.")
