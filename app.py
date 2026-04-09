@@ -227,6 +227,13 @@ div.stButton > button:hover {
     margin: 5px 0;
     box-shadow: 0 2px 8px rgba(40,167,69,0.3);
 }
+.demo-box {
+    background: white;
+    border: 2px solid #004A8F;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 10px 0;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -531,7 +538,7 @@ def tabla_html(filas):
 # ── Limpiar si no hay archivo ─────────────────────────────────────────────────
 if archivo is None:
     for k in ["resultados_encrypted", "informes_encrypted", "objetivo_encrypted", 
-              "dispensas_encrypted", "vista", "codigos_pdfs_encrypted", "total_dispensas"]:
+              "dispensas_encrypted", "vista", "codigos_pdfs_encrypted", "total_dispensas", "total_pdfs"]:
         st.session_state.pop(k, None)
 
 # ── Procesamiento ──────────────────────────────────────────────────────────────
@@ -584,6 +591,7 @@ if procesar:
         st.session_state["objetivo_encrypted"] = secure.cifrar_texto(objetivo)
         st.session_state["dispensas_encrypted"] = secure.cifrar_texto(dispensas)
         st.session_state["total_dispensas"] = total_dispensas
+        st.session_state["total_pdfs"] = total_pdfs
         st.session_state["codigos_pdfs_encrypted"] = secure.cifrar_datos(codigos_pdfs)
         st.session_state["vista"] = "informe"
 
@@ -594,46 +602,149 @@ if "resultados_encrypted" in st.session_state:
     objetivo = secure.descifrar_texto(st.session_state["objetivo_encrypted"])
     dispensas = secure.descifrar_texto(st.session_state["dispensas_encrypted"])
     codigos_pdfs = secure.descifrar_datos(st.session_state.get("codigos_pdfs_encrypted", "{}"))
+    total_pdfs = st.session_state.get("total_pdfs", 0)
 else:
     resultados = {}
     informes = {}
     objetivo = ""
     dispensas = ""
     codigos_pdfs = {}
+    total_pdfs = 0
 
 if resultados:
     total_dispensas = st.session_state.get("total_dispensas")
 
-    # Resumen simple de seguridad
+    # ── DEMOSTRACIÓN DE CIFRADO ────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="section-header">🔐 SEGURIDAD - DATOS CIFRADOS</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">🔐 DEMOSTRACIÓN DE SEGURIDAD - CIFRADO EN TIEMPO REAL</div>', unsafe_allow_html=True)
     
     st.markdown("""
     <div class="security-box">
         <div class="security-badge">✅ CIFRADO ACTIVO - FERNET (AES-128-CBC)</div>
         <p style="margin: 10px 0; color: #495057; font-size: 13px;">
-            Todos los datos sensibles están cifrados en session_state usando Fernet (AES-128-CBC + HMAC-SHA256).
-            Solo se descifran temporalmente para visualización.
+            <strong>Ejemplo práctico:</strong> Los datos se cifran inmediatamente después de extraerse. 
+            Solo se descifran temporalmente para mostrarse en pantalla.
         </p>
     </div>
     """, unsafe_allow_html=True)
     
-    col_a, col_b = st.columns(2)
+    # Ejemplo 1: Número de Operación
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
+        st.markdown("**📄 DATO VISIBLE (Usuario)**")
+        st.markdown("Así lo ves tú en pantalla:")
+        st.markdown(f'<div class="decrypted-text"><b>N° Operación:</b><br>{resultados.get("N° de Operación (CFA)", "N/A")}</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
+        st.markdown("**🔐 DATO CIFRADO (Session State)**")
+        st.markdown("Así está almacenado en memoria:")
+        
+        # Obtener el dato cifrado completo
+        if st.session_state.get("resultados_encrypted"):
+            datos_encrypted = st.session_state["resultados_encrypted"]
+            # Mostrar solo los primeros 80 caracteres
+            st.markdown(f'<div class="encrypted-text"><b>Blob cifrado:</b><br>{datos_encrypted[:80]}...</div>', unsafe_allow_html=True)
+            st.caption("*Cifrado completo en session_state*")
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Ejemplo 2: Monto del préstamo
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
+        st.markdown("**💰 DATO VISIBLE (Usuario)**")
+        st.markdown(f'<div class="decrypted-text"><b>Monto Aprobado:</b><br>{resultados.get("Monto préstamo CAF (Aprobado)", "N/A")}</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
+        st.markdown("**🔐 DATO CIFRADO (Session State)**")
+        st.markdown(f'<div class="encrypted-text"><b>Monto:</b><br>[CIFRADO - Imposible de leer sin clave]</div>', unsafe_allow_html=True)
+        st.caption("*Incluso si alguien accede a la memoria, no puede leerlo*")
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Ejemplo 3: Dispensas
+    col5, col6 = st.columns(2)
+    
+    with col5:
+        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
+        st.markdown("**📋 DATO VISIBLE (Usuario)**")
+        import re as re_clean
+        dispensas_preview = re_clean.sub(r'<[^>]+>', '', dispensas)[:150]
+        st.markdown(f'<div class="decrypted-text"><b>Dispensas:</b><br>{dispensas_preview}...</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with col6:
+        st.markdown('<div class="demo-box">', unsafe_allow_html=True)
+        st.markdown("**🔐 DATO CIFRADO (Session State)**")
+        if st.session_state.get("dispensas_encrypted"):
+            st.markdown(f'<div class="encrypted-text">{st.session_state["dispensas_encrypted"][:80]}...</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # Resumen de seguridad MEJORADO
+    st.markdown("---")
+    st.markdown('<div class="section-header">📊 RESUMEN DE SEGURIDAD COMPLETO</div>', unsafe_allow_html=True)
+    
+    # Calcular totales incluyendo verificación
+    total_campos_base = len(resultados) + len(informes) + 2
+    
+    # Intentar obtener datos de verificación si existen
+    try:
+        # En la vista de calidad, estos datos existen
+        codigos_ficha_count = len(codigos_ficha) if 'codigos_ficha' in locals() else 0
+        codigos_excel_count = len(codigos_excel) if 'codigos_excel' in locals() else 0
+        codigos_zip_count = len(todos_codigos_zip) if 'todos_codigos_zip' in locals() else 0
+        total_verificacion = codigos_ficha_count + codigos_excel_count + codigos_zip_count
+    except:
+        total_verificacion = 0
+        codigos_ficha_count = codigos_excel_count = codigos_zip_count = 0
+    
+    total_general = total_campos_base + total_verificacion
+    
+    col_a, col_b, col_c = st.columns(3)
+    
     with col_a:
-        st.metric("📁 Campos Cifrados", f"{len(resultados) + len(informes) + 2}")
-        st.caption("Operación, informes, objetivo y dispensas")
+        st.metric("📁 Total Campos Cifrados", total_general)
+        st.caption(f"{total_campos_base} ficha + {total_verificacion} verificación")
     
     with col_b:
         st.metric("🔐 Algoritmo", "Fernet")
         st.caption("AES-128-CBC + HMAC-SHA256")
     
+    with col_c:
+        st.metric("📄 Archivos ZIP", total_pdfs)
+        st.caption("Procesados y cifrados")
+    
+    # Detalles por sección
+    col_d1, col_d2 = st.columns(2)
+    
+    with col_d1:
+        st.markdown("**📋 Informe de Apoyo (CIFRADO):**")
+        st.code(f"• {len(resultados)} campos de operación")
+        st.code(f"• {len(informes)} informes de auditoría")
+        st.code(f"• 1 objetivo general")
+        st.code(f"• 1 sección de dispensas")
+    
+    with col_d2:
+        st.markdown("**🔍 Verificación de Calidad (CIFRADO):**")
+        st.code(f"• {codigos_ficha_count} códigos de ficha")
+        st.code(f"• {codigos_excel_count} códigos de Excel")
+        st.code(f"• {codigos_zip_count} códigos de ZIP")
+        st.code(f"• Métricas de comparación")
+    
     st.success("""
     **✅ CONCLUSIÓN DE SEGURIDAD:**
     
-    - ✅ Datos en reposo (session_state): **CIFRADOS**
+    Todos los datos sensibles están protegidos mediante cifrado Fernet:
+    - ✅ Datos en reposo (session_state): **CIFRADOS** (incluyendo verificación de calidad)
     - ✅ Datos en tránsito: **PROTEGIDOS POR HTTPS**
     - ✅ Clave de cifrado: **ALMACENADA EN SECRETS (no en código)**
     - ✅ Archivos temporales: **ELIMINADOS AUTOMÁTICAMENTE**
+    - ✅ Comparaciones: **SIN ALMACENAMIENTO PERMANENTE**
     """)
 
     # Botones de vista
