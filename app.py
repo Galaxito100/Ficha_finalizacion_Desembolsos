@@ -14,7 +14,7 @@ import hashlib
 st.set_page_config(
     page_title="CAF – Extractor FR (Cifrado)",
     layout="wide",
-    page_icon="🔐"
+    page_icon="🏛️"
 )
 
 # ── CLASE PARA CIFRADO SEGURO ──────────────────────────────────────────────
@@ -724,15 +724,28 @@ if resultados:
         else:
             st.info("📂 No se subieron archivos ZIP en esta sesión")
     
-    # Resumen de seguridad
+    # Resumen de seguridad MEJORADO - Incluye verificación de calidad
     st.markdown("---")
-    st.markdown('<div class="section-header">📊 RESUMEN DE SEGURIDAD</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">📊 RESUMEN DE SEGURIDAD COMPLETO</div>', unsafe_allow_html=True)
+    
+    # Calcular total de campos cifrados
+    total_campos_base = len(resultados) + len(informes) + 2  # ficha + informes + objetivo + dispensas
+    
+    # Intentar obtener códigos de verificación si existen
+    try:
+        codigos_ficha_count = len(codigos_ficha) if 'codigos_ficha' in locals() else 0
+        codigos_excel_count = len(codigos_excel) if 'codigos_excel' in locals() else 0
+        codigos_zip_count = len(todos_codigos_zip) if 'todos_codigos_zip' in locals() else 0
+        total_campos = total_campos_base + codigos_ficha_count + codigos_excel_count + codigos_zip_count
+    except:
+        total_campos = total_campos_base
+        codigos_ficha_count = codigos_excel_count = codigos_zip_count = 0
     
     col_a, col_b, col_c = st.columns(3)
     
     with col_a:
-        st.metric("📁 Campos Cifrados", f"{len(resultados) + len(informes) + 2}")
-        st.caption("Incluye operación, informes, objetivo y dispensas")
+        st.metric("📁 Campos Cifrados", total_campos)
+        st.caption("Incluye operación, informes, objetivo, dispensas y verificación")
     
     with col_b:
         st.metric("🔐 Algoritmo", "Fernet")
@@ -742,14 +755,31 @@ if resultados:
         st.metric("📄 Archivos ZIP", f"{len(codigos_pdfs) if codigos_pdfs else 0}")
         st.caption("Procesados y cifrados")
     
+    # Detalles adicionales de seguridad
+    col_d1, col_d2 = st.columns(2)
+    with col_d1:
+        st.markdown("**📋 Datos cifrados en Informe de Apoyo:**")
+        st.code(f"• {len(resultados)} campos de operación")
+        st.code(f"• {len(informes)} informes de auditoría")
+        st.code(f"• 1 objetivo general")
+        st.code(f"• 1 sección de dispensas")
+    
+    with col_d2:
+        st.markdown("**🔍 Datos cifrados en Verificación:**")
+        st.code(f"• {codigos_ficha_count} códigos de ficha")
+        st.code(f"• {codigos_excel_count} códigos de Excel")
+        st.code(f"• {codigos_zip_count} códigos de ZIP")
+        st.code(f"• Métricas de comparación")
+    
     st.success("""
     **✅ CONCLUSIÓN DE SEGURIDAD:**
     
     Todos los datos sensibles extraídos de la Ficha de Finalización de Desembolsos están protegidos mediante cifrado Fernet.
-    - ✅ Datos en reposo (session_state): **CIFRADOS**
+    - ✅ Datos en reposo (session_state): **CIFRADOS** (incluyendo verificación de calidad)
     - ✅ Datos en tránsito: **PROTEGIDOS POR HTTPS**
     - ✅ Clave de cifrado: **ALMACENADA EN SECRETS (no en código)**
     - ✅ Archivos temporales: **ELIMINADOS AUTOMÁTICAMENTE**
+    - ✅ Comparaciones: **SIN ALMACENAMIENTO PERMANENTE**
     """)
 
     # Botones de vista
