@@ -9,12 +9,14 @@ from cryptography.fernet import Fernet
 import json
 import base64
 import hashlib
+import hmac
 
 # ── Configuración de página ────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="CAF – Extractor FR (Cifrado)",
+    page_title="CAF – Extractor FR",
     layout="wide",
-    page_icon="🏛️"
+    page_icon="🏛️",
+    initial_sidebar_state="collapsed"
 )
 
 # ── CLASE PARA CIFRADO SEGURO ──────────────────────────────────────────────
@@ -82,10 +84,56 @@ class SecureData:
         except:
             return texto_cifrado
 
-# ── INICIALIZAR CIFRADO ────────────────────────────────────────────────────
-secure = SecureData()
+# ── SISTEMA DE AUTENTICACIÓN ────────────────────────────────────────────────
+class AuthSystem:
+    """Sistema de autenticación simple con credenciales cifradas"""
+    
+    def __init__(self, secure):
+        self.secure = secure
+        self.usuario_cifrado = st.secrets.get("auth", {}).get("usuario_cifrado", "")
+        self.password_cifrado = st.secrets.get("auth", {}).get("password_cifrado", "")
+    
+    def verificar_credenciales(self, usuario, password):
+        """Verifica usuario y contraseña contra credenciales cifradas"""
+        try:
+            usuario_real = self.secure.descifrar_texto(self.usuario_cifrado)
+            password_real = self.secure.descifrar_texto(self.password_cifrado)
+            
+            usuario_valido = hmac.compare_digest(usuario, usuario_real)
+            password_valido = hmac.compare_digest(password, password_real)
+            
+            return usuario_valido and password_valido
+        except:
+            return False
+    
+    def login(self, usuario, password):
+        """Intenta hacer login y retorna True si es exitoso"""
+        if self.verificar_credenciales(usuario, password):
+            st.session_state["autenticado"] = True
+            st.session_state["usuario"] = usuario
+            st.session_state["timestamp_login"] = st.session_state.get("timestamp_login", 0) + 1
+            return True
+        return False
+    
+    def logout(self):
+        """Cierra la sesión"""
+        st.session_state["autenticado"] = False
+        st.session_state["usuario"] = None
+        for key in list(st.session_state.keys()):
+            if key.endswith("_encrypted") or key in ["resultados", "informes", "objetivo", "dispensas"]:
+                del st.session_state[key]
 
-# ── Estilo CAF ─────────────────────────────────────────────────────────────────
+# ── INICIALIZAR COMPONENTES ─────────────────────────────────────────────────
+if 'secure' not in st.session_state:
+    st.session_state['secure'] = SecureData()
+
+secure = st.session_state['secure']
+auth = AuthSystem(secure)
+
+if "autenticado" not in st.session_state:
+    st.session_state["autenticado"] = False
+
+# ── ESTILO CAF ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Open+Sans:wght@400;600&display=swap');
@@ -94,6 +142,76 @@ html, body, [class*="css"] {
     font-family: 'Open Sans', sans-serif;
     background-color: #f4f6f9;
 }
+
+/* Login Styles */
+.login-container {
+    max-width: 450px;
+    margin: 80px auto;
+    padding: 40px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,74,143,0.15);
+}
+.login-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+.login-title {
+    color: #004A8F;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    margin: 20px 0 10px 0;
+}
+.login-subtitle {
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 30px;
+}
+.login-input {
+    margin: 15px 0;
+}
+.login-input label {
+    color: #004A8F;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+.login-button {
+    background: linear-gradient(135deg, #004A8F, #006BB6);
+    color: white;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    border: none;
+    padding: 14px 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 20px;
+    transition: all 0.3s ease;
+}
+.login-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,74,143,0.3);
+}
+.login-error {
+    background: #fee;
+    border-left: 4px solid #c00;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin: 15px 0;
+    color: #c00;
+    font-size: 13px;
+}
+.login-footer {
+    text-align: center;
+    margin-top: 30px;
+    color: #888;
+    font-size: 12px;
+}
+
+/* CAF Header */
 .caf-header {
     background: linear-gradient(135deg, #004A8F 0%, #006BB6 100%);
     padding: 28px 36px;
@@ -189,57 +307,103 @@ div.stButton > button:hover {
 }
 #MainMenu, footer { visibility: hidden; }
 
-/* Estilos para demostración de seguridad */
-.security-box {
-    background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
-    border-left: 5px solid #004A8F;
-    border-radius: 8px;
-    padding: 20px;
-    margin: 15px 0;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-.encrypted-text {
-    font-family: 'Courier New', monospace;
-    background: #fff3cd;
-    color: #856404;
-    padding: 8px 12px;
-    border-radius: 4px;
-    font-size: 11px;
-    word-break: break-all;
-    border: 1px solid #ffc107;
-}
-.decrypted-text {
-    background: #d4edda;
-    color: #155724;
-    padding: 8px 12px;
-    border-radius: 4px;
-    font-size: 13px;
-    border: 1px solid #28a745;
-}
-.security-badge {
-    display: inline-block;
-    background: linear-gradient(135deg, #28a745, #20c997);
+.user-badge {
+    background: linear-gradient(135deg, #004A8F, #006BB6);
     color: white;
-    padding: 8px 16px;
+    padding: 6px 16px;
     border-radius: 20px;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 12px;
-    margin: 5px 0;
-    box-shadow: 0 2px 8px rgba(40,167,69,0.3);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Header ─────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="caf-header">
-    <div>
-        <div class="caf-header-sub">Gerencia Corporativa de Riesgos · Dirección de Riesgo Soberano</div>
-        <div class="caf-header-title">Ficha de Finalización de Desembolsos</div>
+# ── PANTALLA DE LOGIN ────────────────────────────────────────────────────────
+if not st.session_state["autenticado"]:
+    st.markdown("""
+    <div class="login-container">
+        <div class="login-header">
+            <div style="font-size: 72px; margin-bottom: 10px; font-weight: 900; color: #004A8F; font-family: 'Montserrat', sans-serif;">CAF</div>
+        </div>
     </div>
-    <div style="color:white; font-family:Montserrat; font-size:32px; font-weight:900; letter-spacing:-1px;">CAF</div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+    
+    with st.form(key="login_form", clear_on_submit=False):
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            usuario_input = st.text_input(
+                "👤 Usuario",
+                placeholder="Ingrese su usuario",
+                key="usuario_input",
+                label_visibility="visible"
+            )
+            password_input = st.text_input(
+                "🔒 Contraseña",
+                type="password",
+                placeholder="Ingrese su contraseña",
+                key="password_input",
+                label_visibility="visible"
+            )
+            
+            submit_button = st.form_submit_button(
+                "🔐 Ingresar al Sistema",
+                use_container_width=True
+            )
+            
+            if submit_button:
+                if not usuario_input or not password_input:
+                    st.error("❌ Por favor ingrese usuario y contraseña")
+                elif auth.login(usuario_input, password_input):
+                    st.success("✅ Autenticación exitosa. Redirigiendo...")
+                    st.rerun()
+                else:
+                    st.error("❌ Usuario o contraseña incorrectos")
+    
+    st.markdown("""
+    <div style="text-align: center; margin-top: 40px; color: #888; font-size: 12px;">
+        <p>🔐 Sistema Seguro - Todos los accesos son auditados</p>
+        <p>© 2024 CAF - Banco de Desarrollo de América Latina y el Caribe</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.stop()
+
+# ── APLICACIÓN PRINCIPAL (Solo si está autenticado) ─────────────────────────
+
+col_logo, col_user = st.columns([3, 1])
+with col_logo:
+    st.markdown("""
+    <div class="caf-header">
+        <div>
+            <div class="caf-header-sub">Gerencia Corporativa de Riesgos · Dirección de Riesgo Soberano</div>
+            <div class="caf-header-title">Ficha de Finalización de Desembolsos</div>
+        </div>
+        <div style="color:white; font-family:Montserrat; font-size:32px; font-weight:900; letter-spacing:-1px;">CAF</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_user:
+    st.markdown(f"""
+    <div style="text-align: right; margin: 20px 0;">
+        <div class="user-badge">
+            👤 {st.session_state.get("usuario", "Usuario")}
+        </div>
+        <div style="margin-top: 10px;">
+            <button onclick="document.getElementById('logout_btn').click()" 
+                    style="background: #c00; color: white; border: none; padding: 6px 16px; 
+                           border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">
+                🚪 Cerrar Sesión
+            </button>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("", key="logout_btn"):
+        auth.logout()
+        st.rerun()
 
 # ── Upload + Botón ─────────────────────────────────────────────────────────────
 col_up, col_btn = st.columns([3, 1])
@@ -256,7 +420,6 @@ archivo_excel = st.file_uploader(
     help="Debe contener la hoja 'Consolidado (2019 - 2025)' con columna 'Codigo de documento'"
 )
 
-# ── Upload ZIP para PDFs ──────────────────────────────────────────────────────
 st.markdown('<div style="margin-top: 20px; font-size: 13.5px; color: #004A8F; font-weight: 600;">📚 Documentación de Respaldo (ZIP)</div>', unsafe_allow_html=True)
 st.caption("Comprime todos tus PDFs de respaldo (EED, CCI, etc.) en un solo archivo .zip para procesamiento rápido.")
 zip_pdfs = st.file_uploader(
@@ -563,7 +726,6 @@ if procesar:
 
         os.unlink(ruta_tmp)
 
-        # Guardamos DATOS CIFRADOS
         resultados_dict = {
             "N° de Operación (CFA)": buscar_campo(texto, r"CFA\s*[–\-]\s*([\d]+(?:/[\d]+)*)"),
             "Nombre de la Operación": buscar_campo(texto, r"Nombre de la operaci[oó]n" + SEP + r"([^|\n]+)"),
@@ -606,118 +768,6 @@ else:
 
 if resultados:
     total_dispensas = st.session_state.get("total_dispensas")
-
-    # ── DEMOSTRACIÓN DE CIFRADO ──────────────────────
-    st.markdown("---")
-    st.markdown('<div class="section-header">🔐 DEMOSTRACIÓN DE SEGURIDAD - CIFRADO EN TIEMPO REAL</div>', unsafe_allow_html=True)
-    
-    st.markdown("""
-    <div class="security-box">
-        <div class="security-badge">✅ CIFRADO ACTIVO - FERNET (AES-128-CBC)</div>
-        <p style="margin: 10px 0; color: #495057; font-size: 13px;">
-            <strong>Ejemplo práctico:</strong> Los datos se cifran inmediatamente después de extraerse. 
-            Solo se descifran temporalmente para mostrarse en pantalla.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Tabla comparativa simple
-    st.markdown("### 📊 Comparación: Dato Visible vs Dato Cifrado")
-    
-    # Ejemplo 1: Número de Operación
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**📄 DATO VISIBLE (Usuario)**")
-        st.markdown(f'<div class="decrypted-text"><b>N° Operación:</b><br>{resultados.get("N° de Operación (CFA)", "N/A")}</div>', unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown("**🔐 DATO CIFRADO (Session State)**")
-        if st.session_state.get("resultados_encrypted"):
-            datos_encrypted = st.session_state["resultados_encrypted"]
-            st.markdown(f'<div class="encrypted-text"><b>Blob cifrado:</b><br>{datos_encrypted[:60]}...</div>', unsafe_allow_html=True)
-    
-    # Ejemplo 2: Monto del préstamo
-    col3, col4 = st.columns(2)
-    
-    with col3:
-        st.markdown("**💰 DATO VISIBLE (Usuario)**")
-        st.markdown(f'<div class="decrypted-text"><b>Monto Aprobado:</b><br>{resultados.get("Monto préstamo CAF (Aprobado)", "N/A")}</div>', unsafe_allow_html=True)
-    
-    with col4:
-        st.markdown("**🔐 DATO CIFRADO (Session State)**")
-        st.markdown(f'<div class="encrypted-text"><b>Monto:</b><br>[CIFRADO - Imposible de leer sin clave]</div>', unsafe_allow_html=True)
-    
-    # Ejemplo 3: Dispensas (texto largo)
-    col5, col6 = st.columns(2)
-    
-    with col5:
-        st.markdown("**📋 DATO VISIBLE (Usuario)**")
-        import re as re_clean
-        dispensas_preview = re_clean.sub(r'<[^>]+>', '', dispensas)[:100]
-        st.markdown(f'<div class="decrypted-text"><b>Dispensas:</b><br>{dispensas_preview}...</div>', unsafe_allow_html=True)
-    
-    with col6:
-        st.markdown("**🔐 DATO CIFRADO (Session State)**")
-        if st.session_state.get("dispensas_encrypted"):
-            st.markdown(f'<div class="encrypted-text">{st.session_state["dispensas_encrypted"][:60]}...</div>', unsafe_allow_html=True)
-
-    # ── Resumen de seguridad ─────────────────────────────────────────
-    st.markdown("---")
-    st.markdown('<div class="section-header">📊 RESUMEN DE SEGURIDAD COMPLETO</div>', unsafe_allow_html=True)
-    
-    # Calcular totales incluyendo verificación de dispensas
-    total_campos_ficha = len(resultados) + len(informes) + 2  # ficha + informes + objetivo + dispensas
-    
-    # Contar códigos en dispensas (verificación de calidad)
-    codigos_en_dispensas = len(set(re.findall(r'((?:EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)', dispensas, re.IGNORECASE)))
-    
-    # Contar códigos en ZIP
-    codigos_en_zip = len(set([cod for cods in codigos_pdfs.values() if isinstance(cods, list) for cod in cods]))
-    
-    total_verificacion = codigos_en_dispensas + codigos_en_zip
-    total_general = total_campos_ficha + total_verificacion
-    
-    col_a, col_b, col_c = st.columns(3)
-    
-    with col_a:
-        st.metric("📁 Total Campos Cifrados", total_general)
-        st.caption(f"{total_campos_ficha} ficha + {total_verificacion} verificación")
-    
-    with col_b:
-        st.metric("🔐 Algoritmo", "Fernet")
-        st.caption("AES-128-CBC + HMAC-SHA256")
-    
-    with col_c:
-        st.metric("📄 Archivos ZIP", total_pdfs)
-        st.caption("Procesados y cifrados")
-    
-    # Detalles por sección
-    col_d1, col_d2 = st.columns(2)
-    
-    with col_d1:
-        st.markdown("**📋 Informe de Apoyo (CIFRADO):**")
-        st.code(f"• {len(resultados)} campos de operación")
-        st.code(f"• {len(informes)} informes de auditoría")
-        st.code(f"• 1 objetivo general")
-        st.code(f"• 1 sección de dispensas")
-    
-    with col_d2:
-        st.markdown("**🔍 Verificación de Calidad (CIFRADO):**")
-        st.code(f"• {codigos_en_dispensas} códigos en dispensas")
-        st.code(f"• {codigos_en_zip} códigos en ZIPs")
-        st.code(f"• Métricas de comparación")
-    
-    st.success("""
-    **✅ CONCLUSIÓN DE SEGURIDAD:**
-    
-    Todos los datos sensibles están protegidos mediante cifrado Fernet:
-    - ✅ Datos en reposo (session_state): **CIFRADOS** (incluyendo verificación de calidad)
-    - ✅ Datos en tránsito: **PROTEGIDOS POR HTTPS**
-    - ✅ Clave de cifrado: **ALMACENADA EN SECRETS (no en código)**
-    - ✅ Archivos temporales: **ELIMINADOS AUTOMÁTICAMENTE**
-    - ✅ Comparaciones: **SIN ALMACENAMIENTO PERMANENTE**
-    """)
 
     # Botones de vista
     st.write("")
@@ -770,12 +820,10 @@ if resultados:
                     cfa_raw = resultados.get("N° de Operación (CFA)", "")
                     numeros_cfa = [n.strip() for n in cfa_raw.split("/") if n.strip()]
 
-                    # FIX: Convertir todo a string antes de comparar
                     col_op_upper = df[col_operacion].astype(str).str.upper()
                     if len(numeros_cfa) == 1:
                         mask = col_op_upper.str.contains(f"CFA0*{numeros_cfa[0]}\\b", na=False, regex=True)
                     else:
-                        # FIX: Asegurar que todo sea string
                         mask = col_op_upper.apply(
                             lambda v: all(str(n) in str(v) for n in numeros_cfa)
                         )
