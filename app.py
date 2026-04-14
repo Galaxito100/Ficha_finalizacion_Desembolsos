@@ -4,10 +4,6 @@ import io
 import tempfile
 import streamlit as st
 from pathlib import Path
-from cryptography.fernet import Fernet
-import json
-import base64
-import hashlib
 
 # ── Configuración de página ────────────────────────────────────────────────────
 st.set_page_config(
@@ -16,77 +12,6 @@ st.set_page_config(
     page_icon="🏛️",
     initial_sidebar_state="collapsed"
 )
-
-# ── CLASE PARA CIFRADO SEGURO ──────────────────────────────────────────────
-class SecureData:
-    """Cifra y descifra datos sensibles de la aplicación"""
-    
-    def __init__(self):
-        try:
-            clave_raw = st.secrets["security"]["encryption_key"]
-            
-            if isinstance(clave_raw, str):
-                clave_raw = clave_raw.encode()
-            
-            if len(clave_raw) < 32:
-                clave_raw = clave_raw.ljust(32, b'\0')
-            elif len(clave_raw) > 32:
-                clave_raw = hashlib.sha256(clave_raw).digest()
-            
-            clave_base64 = base64.urlsafe_b64encode(clave_raw)
-            self.cipher = Fernet(clave_base64)
-            self.disponible = True
-            
-        except Exception as e:
-            st.error(f"⚠️ Error configurando cifrado: {e}")
-            self.disponible = False
-    
-    def cifrar_datos(self, datos):
-        if not self.disponible:
-            return datos
-        try:
-            json_str = json.dumps(datos, ensure_ascii=False)
-            datos_cifrados = self.cipher.encrypt(json_str.encode('utf-8'))
-            return base64.b64encode(datos_cifrados).decode('utf-8')
-        except Exception as e:
-            st.error(f"Error cifrando datos: {e}")
-            return None
-    
-    def descifrar_datos(self, datos_cifrados):
-        if not self.disponible:
-            return datos_cifrados
-        if not datos_cifrados:
-            return None
-        try:
-            datos_bytes = base64.b64decode(datos_cifrados)
-            datos_descifrados = self.cipher.decrypt(datos_bytes)
-            return json.loads(datos_descifrados.decode('utf-8'))
-        except Exception as e:
-            return None
-    
-    def cifrar_texto(self, texto):
-        if not self.disponible or not texto:
-            return texto
-        try:
-            datos_cifrados = self.cipher.encrypt(texto.encode('utf-8'))
-            return base64.b64encode(datos_cifrados).decode('utf-8')
-        except:
-            return texto
-    
-    def descifrar_texto(self, texto_cifrado):
-        if not self.disponible or not texto_cifrado:
-            return texto_cifrado
-        try:
-            datos_bytes = base64.b64decode(texto_cifrado)
-            return self.cipher.decrypt(datos_bytes).decode('utf-8')
-        except:
-            return texto_cifrado
-
-# ── INICIALIZAR COMPONENTES ─────────────────────────────────────────────────
-if 'secure' not in st.session_state:
-    st.session_state['secure'] = SecureData()
-
-secure = st.session_state['secure']
 
 # ── ESTILO CAF ─────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -464,8 +389,7 @@ def tabla_html(filas):
 
 # ── Limpiar si no hay archivo ─────────────────────────────────────────────────
 if archivo is None:
-    for k in ["resultados_encrypted", "informes_encrypted", "objetivo_encrypted", 
-              "dispensas_encrypted", "vista", "total_dispensas"]:
+    for k in ["resultados", "informes", "objetivo", "dispensas", "vista", "total_dispensas"]:
         st.session_state.pop(k, None)
 
 # ── Procesamiento ──────────────────────────────────────────────────────────────
@@ -491,7 +415,8 @@ if procesar:
         # Eliminación de archivos temporales
         os.unlink(ruta_tmp)
 
-        resultados_dict = {
+        # Guardamos datos directamente (sin cifrado)
+        st.session_state["resultados"] = {
             "N° de Operación (CFA)": buscar_campo(texto, r"CFA\s*[–\-]\s*([\d]+(?:/[\d]+)*)"),
             "Nombre de la Operación": buscar_campo(texto, r"Nombre de la operaci[oó]n" + SEP + r"([^|\n]+)"),
             "Prestatario": buscar_campo(texto, r"Prestatario" + SEP + r"([^|\n]+)"),
@@ -505,21 +430,18 @@ if procesar:
                 buscar_campo(texto, r"Monto del pr[eé]stamo[^\n]*aprobado CAF[^\n]*\nMonto del pr[eé]stamo[^\n]*aprobado CAF[\s|]+([^\n]+)")
             ))(),
         }
-
-        # Cifrado de datos
-        st.session_state["resultados_encrypted"] = secure.cifrar_datos(resultados_dict)
-        st.session_state["informes_encrypted"] = secure.cifrar_datos(informes)
-        st.session_state["objetivo_encrypted"] = secure.cifrar_texto(objetivo)
-        st.session_state["dispensas_encrypted"] = secure.cifrar_texto(dispensas)
+        st.session_state["informes"] = informes
+        st.session_state["objetivo"] = objetivo
+        st.session_state["dispensas"] = dispensas
         st.session_state["total_dispensas"] = total_dispensas
         st.session_state["vista"] = "informe"
 
 # ── Renderizado ────────────────────────────────────────────────────────────────
-if "resultados_encrypted" in st.session_state:
-    resultados = secure.descifrar_datos(st.session_state["resultados_encrypted"])
-    informes = secure.descifrar_datos(st.session_state["informes_encrypted"])
-    objetivo = secure.descifrar_texto(st.session_state["objetivo_encrypted"])
-    dispensas = secure.descifrar_texto(st.session_state["dispensas_encrypted"])
+if "resultados" in st.session_state:
+    resultados = st.session_state["resultados"]
+    informes = st.session_state["informes"]
+    objetivo = st.session_state["objetivo"]
+    dispensas = st.session_state["dispensas"]
 else:
     resultados = {}
     informes = {}
@@ -634,4 +556,4 @@ if resultados:
         else:
             st.info("📂 Sube la base de EED (.xlsx) para comparar el total de dispensas.")
 
-    st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos - 🔐 Datos Cifrados</div>', unsafe_allow_html=True)
+    st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos</div>', unsafe_allow_html=True)
