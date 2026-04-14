@@ -9,7 +9,6 @@ from cryptography.fernet import Fernet
 import json
 import base64
 import hashlib
-import hmac
 
 # ── Configuración de página ────────────────────────────────────────────────────
 st.set_page_config(
@@ -19,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ── CLASE PARA CIFRADO SEGURO ──────────────────────────────────────────────
+# ── CLASE PARA CIFRADO SEGURO (Se mantiene para proteger los datos) ────────────
 class SecureData:
     """Cifra y descifra datos sensibles de la aplicación"""
     
@@ -84,54 +83,11 @@ class SecureData:
         except:
             return texto_cifrado
 
-# ── SISTEMA DE AUTENTICACIÓN ────────────────────────────────────────────────
-class AuthSystem:
-    """Sistema de autenticación simple con credenciales cifradas"""
-    
-    def __init__(self, secure):
-        self.secure = secure
-        self.usuario_cifrado = st.secrets.get("auth", {}).get("usuario_cifrado", "")
-        self.password_cifrado = st.secrets.get("auth", {}).get("password_cifrado", "")
-    
-    def verificar_credenciales(self, usuario, password):
-        """Verifica usuario y contraseña contra credenciales cifradas"""
-        try:
-            usuario_real = self.secure.descifrar_texto(self.usuario_cifrado)
-            password_real = self.secure.descifrar_texto(self.password_cifrado)
-            
-            usuario_valido = hmac.compare_digest(usuario, usuario_real)
-            password_valido = hmac.compare_digest(password, password_real)
-            
-            return usuario_valido and password_valido
-        except:
-            return False
-    
-    def login(self, usuario, password):
-        """Intenta hacer login y retorna True si es exitoso"""
-        if self.verificar_credenciales(usuario, password):
-            st.session_state["autenticado"] = True
-            st.session_state["usuario"] = usuario
-            st.session_state["timestamp_login"] = st.session_state.get("timestamp_login", 0) + 1
-            return True
-        return False
-    
-    def logout(self):
-        """Cierra la sesión"""
-        st.session_state["autenticado"] = False
-        st.session_state["usuario"] = None
-        for key in list(st.session_state.keys()):
-            if key.endswith("_encrypted") or key in ["resultados", "informes", "objetivo", "dispensas"]:
-                del st.session_state[key]
-
 # ── INICIALIZAR COMPONENTES ─────────────────────────────────────────────────
 if 'secure' not in st.session_state:
     st.session_state['secure'] = SecureData()
 
 secure = st.session_state['secure']
-auth = AuthSystem(secure)
-
-if "autenticado" not in st.session_state:
-    st.session_state["autenticado"] = False
 
 # ── ESTILO CAF ─────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -143,75 +99,6 @@ html, body, [class*="css"] {
     background-color: #f4f6f9;
 }
 
-/* Login Styles */
-.login-container {
-    max-width: 450px;
-    margin: 80px auto;
-    padding: 40px;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0,74,143,0.15);
-}
-.login-header {
-    text-align: center;
-    margin-bottom: 40px;
-}
-.login-title {
-    color: #004A8F;
-    font-family: 'Montserrat', sans-serif;
-    font-size: 28px;
-    font-weight: 800;
-    margin: 20px 0 10px 0;
-}
-.login-subtitle {
-    color: #666;
-    font-size: 14px;
-    margin-bottom: 30px;
-}
-.login-input {
-    margin: 15px 0;
-}
-.login-input label {
-    color: #004A8F;
-    font-weight: 600;
-    font-size: 13px;
-    margin-bottom: 8px;
-}
-.login-button {
-    background: linear-gradient(135deg, #004A8F, #006BB6);
-    color: white;
-    font-family: 'Montserrat', sans-serif;
-    font-weight: 700;
-    font-size: 14px;
-    border: none;
-    padding: 14px 32px;
-    border-radius: 8px;
-    cursor: pointer;
-    width: 100%;
-    margin-top: 20px;
-    transition: all 0.3s ease;
-}
-.login-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0,74,143,0.3);
-}
-.login-error {
-    background: #fee;
-    border-left: 4px solid #c00;
-    padding: 12px 16px;
-    border-radius: 4px;
-    margin: 15px 0;
-    color: #c00;
-    font-size: 13px;
-}
-.login-footer {
-    text-align: center;
-    margin-top: 30px;
-    color: #888;
-    font-size: 12px;
-}
-
-/* CAF Header */
 .caf-header {
     background: linear-gradient(135deg, #004A8F 0%, #006BB6 100%);
     padding: 28px 36px;
@@ -306,104 +193,19 @@ div.stButton > button:hover {
     letter-spacing: 0.5px;
 }
 #MainMenu, footer { visibility: hidden; }
-
-.user-badge {
-    background: linear-gradient(135deg, #004A8F, #006BB6);
-    color: white;
-    padding: 6px 16px;
-    border-radius: 20px;
-    font-weight: 600;
-    font-size: 12px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
 </style>
 """, unsafe_allow_html=True)
 
-# ── PANTALLA DE LOGIN ────────────────────────────────────────────────────────
-if not st.session_state["autenticado"]:
-    st.markdown("""
-    <div class="login-container">
-        <div class="login-header">
-            <div style="font-size: 72px; margin-bottom: 10px; font-weight: 900; color: #004A8F; font-family: 'Montserrat', sans-serif;">CAF</div>
-        </div>
+# ── Header ────────────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="caf-header">
+    <div>
+        <div class="caf-header-sub">Gerencia Corporativa de Riesgos · Dirección de Riesgo Soberano</div>
+        <div class="caf-header-title">Ficha de Finalización de Desembolsos</div>
     </div>
-    """, unsafe_allow_html=True)
-    
-    with st.form(key="login_form", clear_on_submit=False):
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            usuario_input = st.text_input(
-                "👤 Usuario",
-                placeholder="Ingrese su usuario",
-                key="usuario_input",
-                label_visibility="visible"
-            )
-            password_input = st.text_input(
-                "🔒 Contraseña",
-                type="password",
-                placeholder="Ingrese su contraseña",
-                key="password_input",
-                label_visibility="visible"
-            )
-            
-            submit_button = st.form_submit_button(
-                "🔐 Ingresar al Sistema",
-                use_container_width=True
-            )
-            
-            if submit_button:
-                if not usuario_input or not password_input:
-                    st.error("❌ Por favor ingrese usuario y contraseña")
-                elif auth.login(usuario_input, password_input):
-                    st.success("✅ Autenticación exitosa. Redirigiendo...")
-                    st.rerun()
-                else:
-                    st.error("❌ Usuario o contraseña incorrectos")
-    
-    st.markdown("""
-    <div style="text-align: center; margin-top: 40px; color: #888; font-size: 12px;">
-        <p>🔐 Sistema Seguro - Todos los accesos son auditados</p>
-        <p>© 2024 CAF - Banco de Desarrollo de América Latina y el Caribe</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.stop()
-
-# ── APLICACIÓN PRINCIPAL (Solo si está autenticado) ─────────────────────────
-
-col_logo, col_user = st.columns([3, 1])
-with col_logo:
-    st.markdown("""
-    <div class="caf-header">
-        <div>
-            <div class="caf-header-sub">Gerencia Corporativa de Riesgos · Dirección de Riesgo Soberano</div>
-            <div class="caf-header-title">Ficha de Finalización de Desembolsos</div>
-        </div>
-        <div style="color:white; font-family:Montserrat; font-size:32px; font-weight:900; letter-spacing:-1px;">CAF</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col_user:
-    st.markdown(f"""
-    <div style="text-align: right; margin: 20px 0;">
-        <div class="user-badge">
-            👤 {st.session_state.get("usuario", "Usuario")}
-        </div>
-        <div style="margin-top: 10px;">
-            <button onclick="document.getElementById('logout_btn').click()" 
-                    style="background: #c00; color: white; border: none; padding: 6px 16px; 
-                           border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">
-                🚪 Cerrar Sesión
-            </button>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    if st.button("", key="logout_btn"):
-        auth.logout()
-        st.rerun()
+    <div style="color:white; font-family:Montserrat; font-size:32px; font-weight:900; letter-spacing:-1px;">CAF</div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── Upload + Botón ─────────────────────────────────────────────────────────────
 col_up, col_btn = st.columns([3, 1])
@@ -724,6 +526,7 @@ if procesar:
                     codigos_pdfs = extraer_codigos_de_zip(zip_pdfs)
                     total_pdfs = len([c for c in codigos_pdfs.values() if isinstance(c, list)])
 
+        # Eliminación de archivos temporales
         os.unlink(ruta_tmp)
 
         resultados_dict = {
@@ -741,6 +544,7 @@ if procesar:
             ))(),
         }
 
+        # Cifrado de datos
         st.session_state["resultados_encrypted"] = secure.cifrar_datos(resultados_dict)
         st.session_state["informes_encrypted"] = secure.cifrar_datos(informes)
         st.session_state["objetivo_encrypted"] = secure.cifrar_texto(objetivo)
