@@ -1,7 +1,6 @@
 import re
 import os
 import io
-import zipfile
 import tempfile
 import streamlit as st
 from pathlib import Path
@@ -18,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ── CLASE PARA CIFRADO SEGURO (Se mantiene para proteger los datos) ────────────
+# ── CLASE PARA CIFRADO SEGURO ──────────────────────────────────────────────
 class SecureData:
     """Cifra y descifra datos sensibles de la aplicación"""
     
@@ -220,14 +219,6 @@ archivo_excel = st.file_uploader(
     "Sube la base de EED (.xlsx) para verificación de calidad",
     type=["xlsx"],
     help="Debe contener la hoja 'Consolidado (2019 - 2025)' con columna 'Codigo de documento'"
-)
-
-st.markdown('<div style="margin-top: 20px; font-size: 13.5px; color: #004A8F; font-weight: 600;">📚 Documentación de Respaldo (ZIP)</div>', unsafe_allow_html=True)
-st.caption("Comprime todos tus PDFs de respaldo (EED, CCI, etc.) en un solo archivo .zip para procesamiento rápido.")
-zip_pdfs = st.file_uploader(
-    "Subir carpeta comprimida (.zip)",
-    type=["zip"],
-    help="Sube un archivo .zip que contenga todos los PDFs para contrastar"
 )
 
 # ── Funciones de extracción ────────────────────────────────────────────────────
@@ -465,28 +456,6 @@ def extraer_dispensas(ruta, extension):
     except Exception: pass
     return "No encontrado"
 
-def extraer_codigos_de_zip(file_zip):
-    """Extrae códigos EED/CCI/GOI/STCI de un archivo ZIP."""
-    import pypdf
-    codigos_encontrados = {}
-    try:
-        with zipfile.ZipFile(file_zip, 'r') as zf:
-            pdf_files = [f for f in zf.namelist() if f.lower().endswith('.pdf')]
-            for nombre_archivo in pdf_files:
-                try:
-                    with zf.open(nombre_archivo) as f:
-                        reader = pypdf.PdfReader(f)
-                        texto_completo = ""
-                        for page in reader.pages:
-                            texto_completo += page.extract_text() + "\n"
-                    codigos = set(re.findall(r'((?:EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)', texto_completo, re.I))
-                    codigos_encontrados[nombre_archivo] = sorted(list(codigos))
-                except Exception as e:
-                    codigos_encontrados[nombre_archivo] = f"Error lectura: {str(e)}"
-    except Exception as e:
-        st.error(f"Error al descomprimir o leer el ZIP: {e}")
-    return codigos_encontrados
-
 def tabla_html(filas):
     rows = ""
     for label, valor in filas:
@@ -496,7 +465,7 @@ def tabla_html(filas):
 # ── Limpiar si no hay archivo ─────────────────────────────────────────────────
 if archivo is None:
     for k in ["resultados_encrypted", "informes_encrypted", "objetivo_encrypted", 
-              "dispensas_encrypted", "vista", "codigos_pdfs_encrypted", "total_dispensas", "total_pdfs"]:
+              "dispensas_encrypted", "vista", "total_dispensas"]:
         st.session_state.pop(k, None)
 
 # ── Procesamiento ──────────────────────────────────────────────────────────────
@@ -518,13 +487,6 @@ if procesar:
             
             _m = re.search(r">Total</td>\s*<td[^>]*>\s*(\d+)", dispensas, re.IGNORECASE)
             total_dispensas = int(_m.group(1)) if _m else None
-            
-            codigos_pdfs = {}
-            total_pdfs = 0
-            if zip_pdfs:
-                with st.spinner("Extrayendo códigos del ZIP..."):
-                    codigos_pdfs = extraer_codigos_de_zip(zip_pdfs)
-                    total_pdfs = len([c for c in codigos_pdfs.values() if isinstance(c, list)])
 
         # Eliminación de archivos temporales
         os.unlink(ruta_tmp)
@@ -550,8 +512,6 @@ if procesar:
         st.session_state["objetivo_encrypted"] = secure.cifrar_texto(objetivo)
         st.session_state["dispensas_encrypted"] = secure.cifrar_texto(dispensas)
         st.session_state["total_dispensas"] = total_dispensas
-        st.session_state["total_pdfs"] = total_pdfs
-        st.session_state["codigos_pdfs_encrypted"] = secure.cifrar_datos(codigos_pdfs)
         st.session_state["vista"] = "informe"
 
 # ── Renderizado ────────────────────────────────────────────────────────────────
@@ -560,15 +520,11 @@ if "resultados_encrypted" in st.session_state:
     informes = secure.descifrar_datos(st.session_state["informes_encrypted"])
     objetivo = secure.descifrar_texto(st.session_state["objetivo_encrypted"])
     dispensas = secure.descifrar_texto(st.session_state["dispensas_encrypted"])
-    codigos_pdfs = secure.descifrar_datos(st.session_state.get("codigos_pdfs_encrypted", "{}"))
-    total_pdfs = st.session_state.get("total_pdfs", 0)
 else:
     resultados = {}
     informes = {}
     objetivo = ""
     dispensas = ""
-    codigos_pdfs = {}
-    total_pdfs = 0
 
 if resultados:
     total_dispensas = st.session_state.get("total_dispensas")
@@ -636,18 +592,11 @@ if resultados:
                     total_excel = df_filtrado[col_codigo].dropna().nunique() if not df_filtrado.empty else 0
                     
                     codigos_ficha = sorted(set(re.findall(r'((?:EED|CCI|GOI|STCI)[-\s][\d]+(?:/[\d]+)?)', dispensas, re.IGNORECASE)))
-                    
-                    todos_codigos_zip = set()
-                    for cods in codigos_pdfs.values():
-                        if isinstance(cods, list): todos_codigos_zip.update(cods)
-                    todos_codigos_zip = sorted(list(todos_codigos_zip))
-                    
                     codigos_excel = sorted(df_filtrado[col_codigo].dropna().unique().tolist()) if not df_filtrado.empty else []
                     
-                    col_a, col_b, col_c = st.columns(3)
+                    col_a, col_b = st.columns(2)
                     with col_a: st.metric("Total en Ficha", total_dispensas if total_dispensas is not None else "No encontrado")
                     with col_b: st.metric("Total en Excel", total_excel)
-                    with col_c: st.metric("Archivos en ZIP", total_pdfs)
                     
                     if total_dispensas is not None:
                         if total_dispensas == total_excel:
@@ -680,26 +629,9 @@ if resultados:
                             st.markdown(html, unsafe_allow_html=True)
                         else: st.info("No se encontraron registros.")
 
-                    if codigos_pdfs:
-                        st.write("")
-                        st.markdown('<div class="section-header">📑 &nbsp;Códigos en ZIP (PDFs)</div>', unsafe_allow_html=True)
-                        if todos_codigos_zip:
-                            col_z1, col_z2 = st.columns([1, 2])
-                            with col_z1:
-                                st.markdown(f'<div style="background:#EEF3F9;padding:15px;border-radius:8px;text-align:center"><div style="font-size:24px;font-weight:800;color:#004A8F">{len(todos_codigos_zip)}</div><div style="font-size:12px;text-transform:uppercase">Total únicos</div></div>', unsafe_allow_html=True)
-                            with col_z2:
-                                st.markdown('**Por archivo:**')
-                                for nombre, cods in codigos_pdfs.items():
-                                    if isinstance(cods, list) and cods:
-                                        display_name = nombre.split('/')[-1]
-                                        st.markdown(f'<div style="display:inline-block;background:#fff;padding:6px 10px;margin:2px;border-radius:4px;border:1px solid #dce6f0;font-size:11px">📄 <b>{display_name}</b> ({len(cods)} found)</div>', unsafe_allow_html=True)
-                        else:
-                            st.info("No se encontraron códigos (EED/CCI/GOI/STCI) en el ZIP.")
-
             except Exception as e:
                 st.error(f"Error al leer el Excel: {e}")
         else:
             st.info("📂 Sube la base de EED (.xlsx) para comparar el total de dispensas.")
 
     st.markdown('<div class="caf-footer">CAF – Banco de Desarrollo de América Latina y el Caribe &nbsp;·&nbsp; Gerencia Corporativa de Riesgos - 🔐 Datos Cifrados</div>', unsafe_allow_html=True)
-
