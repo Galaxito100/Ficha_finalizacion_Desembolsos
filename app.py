@@ -607,7 +607,7 @@ else:
 if resultados:
     total_dispensas = st.session_state.get("total_dispensas")
 
-    # ── DEMOSTRACIÓN DE CIFRADO (SIN RECTÁNGULOS VACÍOS) ──────────────────────
+    # ── DEMOSTRACIÓN DE CIFRADO ──────────────────────
     st.markdown("---")
     st.markdown('<div class="section-header">🔐 DEMOSTRACIÓN DE SEGURIDAD - CIFRADO EN TIEMPO REAL</div>', unsafe_allow_html=True)
     
@@ -662,7 +662,7 @@ if resultados:
         if st.session_state.get("dispensas_encrypted"):
             st.markdown(f'<div class="encrypted-text">{st.session_state["dispensas_encrypted"][:60]}...</div>', unsafe_allow_html=True)
 
-    # ── RESUMEN DE SEGURIDAD MEJORADO ─────────────────────────────────────────
+    # ── Resumen de seguridad ─────────────────────────────────────────
     st.markdown("---")
     st.markdown('<div class="section-header">📊 RESUMEN DE SEGURIDAD COMPLETO</div>', unsafe_allow_html=True)
     
