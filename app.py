@@ -367,15 +367,13 @@ div.stButton > button:hover {
 
 # ── PANTALLA DE LOGIN ────────────────────────────────────────────────────────
 if not st.session_state["autenticado"]:
-    st.markdown("""
-    <div class="login-container">
-        <div class="login-header">
-            <div style="font-size: 64px; margin-bottom: 10px;">🏛️</div>
-            <div class="login-title">CAF</div>
-            <div class="login-subtitle">Banco de Desarrollo de América Latina y el Caribe<br>Gerencia Corporativa de Riesgos</div>
-        </div>
+   st.markdown("""
+<div class="login-container">
+    <div class="login-header">
+        <div style="font-size: 72px; margin-bottom: 10px; font-weight: 900; color: #004A8F; font-family: 'Montserrat', sans-serif;">CAF</div>
     </div>
-    """, unsafe_allow_html=True)
+</div>
+""", unsafe_allow_html=True)
     
     with st.form(key="login_form", clear_on_submit=False):
         col1, col2, col3 = st.columns([1, 2, 1])
